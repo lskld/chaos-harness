@@ -53,6 +53,24 @@ class ChatTest(unittest.TestCase):
             with self.assertRaises(LLMError):
                 chat(base_url="https://api.example.com/v1", api_key="k", model="m", messages=[])
 
+    def test_list_content_parts_are_joined(self):
+        payload = {"choices": [{"message": {"content": [
+            {"type": "thinking", "thinking": "hmm"},
+            {"type": "text", "text": "hel"},
+            {"type": "text", "text": "lo"},
+        ]}}]}
+        with patch("chaos.llm.requests.post") as post:
+            post.return_value = fake_response(payload=payload)
+            reply = chat(base_url="https://api.example.com/v1", api_key="k", model="m", messages=[])
+        self.assertEqual(reply, "hello")
+
+    def test_none_content_returns_empty_string(self):
+        payload = {"choices": [{"message": {"content": None}}]}
+        with patch("chaos.llm.requests.post") as post:
+            post.return_value = fake_response(payload=payload)
+            reply = chat(base_url="https://api.example.com/v1", api_key="k", model="m", messages=[])
+        self.assertEqual(reply, "")
+
 
 if __name__ == "__main__":
     unittest.main()

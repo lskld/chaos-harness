@@ -6,7 +6,6 @@ from rich.prompt import Prompt
 
 from . import config as config_mod
 from .agent import respond
-from .llm import LLMError
 
 
 def parse_args(argv=None):
@@ -66,7 +65,10 @@ def repl(console, theme, cfg, ref):
         messages.append({"role": "user", "content": command})
         try:
             reply = respond(cfg, ref, messages)
-        except (config_mod.ConfigError, LLMError) as exc:
+        except KeyboardInterrupt:
+            console.print()
+            return
+        except Exception as exc:
             messages.pop()
             print_error(console, theme, exc)
             continue
@@ -92,7 +94,10 @@ def main(argv=None):
         messages = [{"role": "user", "content": args.prompt}]
         try:
             reply = respond(cfg, ref, messages)
-        except (config_mod.ConfigError, LLMError) as exc:
+        except KeyboardInterrupt:
+            console.print()
+            return 130
+        except Exception as exc:
             print_error(console, theme, exc)
             return 1
         console.print(f"[{theme['assistant']}]{escape(reply)}[/]")
