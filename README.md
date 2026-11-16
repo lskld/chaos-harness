@@ -52,9 +52,11 @@ current model and an evil fireball mascot top-right — while the model thinks i
 bobs up and down, cycles thinking faces, and shows a `thinking…` spinner line below
 it. Below that: a scrollable chat (your prompts, the model's reasoning when the
 provider returns it, replies as markdown) and an input line docked at the bottom.
-Commands: `/exit` (or ctrl+q), `/clear`, `/model [provider/model]`.
-When stdin is piped it falls back to a plain print loop; `chaos "prompt"` stays
-one-shot and pipe-friendly.
+Commands: `/exit` (or ctrl+q), `/clear`, `/model [provider/model]`,
+`/theme [name]`. Built-in themes: `fire` (default), `ocean`, `forest`, `sunset`,
+`mono` — switch live with `/theme ocean`, or preselect one with `"theme_name":
+"ocean"` in the config. When stdin is piped it falls back to a plain print loop;
+`chaos "prompt"` stays one-shot and pipe-friendly.
 
 ## Development
 

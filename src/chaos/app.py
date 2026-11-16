@@ -8,6 +8,7 @@ from textual.containers import Horizontal, Vertical
 from textual.widgets import Input, RichLog, Static
 
 from . import config as config_mod
+from . import themes as themes_mod
 from . import ui
 from .agent import respond
 
@@ -40,8 +41,10 @@ class ChaosApp(App):
         super().__init__()
         self.cfg = cfg
         self.ref = ref
-        self.ui_theme = config_mod.theme(cfg)
+        self.theme_name = cfg.get("theme_name") or config_mod.DEFAULT_THEME_NAME
+        self.ui_theme = config_mod.theme(cfg, self.theme_name)
         self.messages = []
+        self._log_items = []
         self._spinner_on = False
         self._spinner_frames = cycle("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
         self._mascot_up = False
@@ -57,9 +60,14 @@ class ChaosApp(App):
                 yield Static(ui.mascot_text(theme=self.ui_theme), id="mascot")
                 yield Static("", id="status")
         yield RichLog(id="log")
-        yield Input(placeholder="ask chaos…  (/model · /clear · /exit)", id="input")
+        yield Input(placeholder="ask chaos…  (/model · /theme · /clear · /exit)", id="input")
 
     def on_mount(self):
+        self._apply_theme()
+        self.set_interval(0.12, self._tick)
+        self.query_one("#input", Input).focus()
+
+    def _apply_theme(self):
         theme = self.ui_theme
         bg = _hex_color(theme["background"], "#1a0d0a")
         self.screen.styles.background = bg
@@ -70,8 +78,31 @@ class ChaosApp(App):
         self.query_one("#tagline").styles.color = _hex_color(theme["info"], "#888888")
         self.query_one("#input").styles.border = ("solid", _hex_color(theme["prompt"], "#00d7ff"))
         self.query_one("#status").styles.color = _hex_color(theme["info"], "#888888")
-        self.set_interval(0.12, self._tick)
-        self.query_one("#input", Input).focus()
+        self.query_one("#mascot", Static).update(ui.mascot_text(theme=self.ui_theme))
+
+    def _log(self, kind, payload):
+        self._log_items.append((kind, payload))
+        rendered = self._render_item(kind, payload)
+        if rendered is not None:
+            self.log_widget.write(rendered)
+
+    def _render_item(self, kind, payload):
+        theme = self.ui_theme
+        renderers = {
+            "user": lambda: ui.render_user(theme, payload),
+            "thinking": lambda: ui.render_thinking(theme, payload),
+            "reply": lambda: ui.render_reply(theme, payload),
+            "info": lambda: ui.render_info(theme, payload),
+            "error": lambda: ui.render_error(theme, payload),
+        }
+        return renderers[kind]()
+
+    def _rebuild_log(self):
+        self.log_widget.clear()
+        for kind, payload in self._log_items:
+            rendered = self._render_item(kind, payload)
+            if rendered is not None:
+                self.log_widget.write(rendered)
 
     @property
     def log_widget(self):
@@ -110,14 +141,19 @@ class ChaosApp(App):
             return
         if text == "/clear":
             self.messages.clear()
+            self._log_items.clear()
             self.log_widget.clear()
             return
         if text == "/model" or text.startswith("/model "):
             arg = text.split(maxsplit=1)[1] if " " in text else ""
             self._model_command(arg)
             return
+        if text == "/theme" or text.startswith("/theme "):
+            arg = text.split(maxsplit=1)[1] if " " in text else ""
+            self._theme_command(arg)
+            return
         self.messages.append({"role": "user", "content": text})
-        self.log_widget.write(ui.render_user(self.ui_theme, text))
+        self._log("user", text)
         self._set_spinner(True)
         self._ask()
 
@@ -125,16 +161,31 @@ class ChaosApp(App):
         if not arg:
             for m in config_mod.list_models(self.cfg):
                 marker = "*" if m == self.ref else " "
-                self.log_widget.write(ui.render_info(self.ui_theme, f"{marker} {m}"))
+                self._log("info", f"{marker} {m}")
             return
         try:
             config_mod.resolve(self.cfg, arg)
         except config_mod.ConfigError as exc:
-            self.log_widget.write(ui.render_error(self.ui_theme, exc))
+            self._log("error", exc)
             return
         self.ref = arg
         self.query_one("#model", Static).update(f"model: {arg}")
-        self.log_widget.write(ui.render_info(self.ui_theme, f"switched to {arg}"))
+        self._log("info", f"switched to {arg}")
+
+    def _theme_command(self, arg):
+        if not arg:
+            for name in config_mod.theme_names():
+                marker = "*" if name == self.theme_name else " "
+                self._log("info", f"{marker} {name}")
+            return
+        if arg not in themes_mod.THEMES:
+            self._log("error", f"unknown theme {arg!r}; available: {', '.join(config_mod.theme_names())}")
+            return
+        self.theme_name = arg
+        self.ui_theme = config_mod.theme(self.cfg, arg)
+        self._apply_theme()
+        self._rebuild_log()
+        self._log("info", f"theme: {arg}")
 
     @work(thread=True)
     def _ask(self):
@@ -147,13 +198,12 @@ class ChaosApp(App):
 
     def _show_reply(self, reply):
         self._set_spinner(False)
-        thinking = ui.render_thinking(self.ui_theme, reply.reasoning)
-        if thinking is not None:
-            self.log_widget.write(thinking)
-        self.log_widget.write(ui.render_reply(self.ui_theme, reply.text))
+        if reply.reasoning:
+            self._log("thinking", reply.reasoning)
+        self._log("reply", reply.text)
 
     def _fail(self, exc):
         self._set_spinner(False)
         if self.messages and self.messages[-1]["role"] == "user":
             self.messages.pop()
-        self.log_widget.write(ui.render_error(self.ui_theme, exc))
+        self._log("error", exc)

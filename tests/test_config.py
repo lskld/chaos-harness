@@ -85,6 +85,17 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(theme["prompt"], config_mod.DEFAULT_THEME["prompt"])
         self.assertEqual(theme["background"], config_mod.DEFAULT_THEME["background"])
 
+    def test_theme_selection_by_name(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg = load_sample(d)
+        self.assertEqual(config_mod.theme(cfg, "ocean")["background"], "#0a1420")
+        self.assertEqual(
+            config_mod.theme(cfg)["background"], config_mod.DEFAULT_THEME["background"]
+        )
+        self.assertIn("fire", config_mod.theme_names())
+        cfg["theme_name"] = "mono"
+        self.assertEqual(config_mod.theme(cfg)["background"], "#111111")
+
 
 if __name__ == "__main__":
     unittest.main()

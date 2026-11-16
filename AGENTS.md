@@ -16,8 +16,9 @@ tool calling yet.
 - `src/chaos/ui.py` — shared renderables: mascot art/frames, banner, user line,
   thinking/reply blocks, info/error; used by both the app and the piped fallback
   loop, plus the themed prompt.
+- `src/chaos/themes.py` — the built-in color themes (`THEMES`, `DEFAULT_THEME_NAME="fire"`).
 - `src/chaos/config.py` — everything about `~/.chaos/config.json`: loading, example
-  generation, theme, `provider/model` resolution.
+  generation, theme selection/overrides, `provider/model` resolution.
 - `src/chaos/llm.py` — all HTTP: a single OpenAI-compatible `POST /chat/completions` call.
 - `src/chaos/agent.py` — the agent seam: v1 makes one call per turn; tool calling,
   budget tracking, and tracing plug in here later.

@@ -92,6 +92,23 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             for selector in ("#topbar", "#log", "#input"):
                 self.assertEqual(app.query_one(selector).styles.background, expected)
 
+    async def test_theme_command_lists_and_switches_live(self):
+        from textual.color import Color
+
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            await type_and_submit(app, pilot, "/theme")
+            text = log_text(app)
+            self.assertIn("* fire", text)
+            for name in ("ocean", "forest", "sunset", "mono"):
+                self.assertIn(name, text)
+            await type_and_submit(app, pilot, "/theme ocean")
+            self.assertEqual(app.theme_name, "ocean")
+            self.assertEqual(app.screen.styles.background, Color.parse("#0a1420"))
+            self.assertIn("theme: ocean", log_text(app))
+            await type_and_submit(app, pilot, "/theme nope")
+            self.assertIn("unknown theme", log_text(app))
+
     async def test_clear_empties_log(self):
         app = ChaosApp(CFG, "p/m")
         async with app.run_test() as pilot:
