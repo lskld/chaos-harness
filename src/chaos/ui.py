@@ -5,25 +5,31 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.text import Text
 
-FIREBALL = r"""
-     ,  )  (  ,
-    (  (  )  )
-     )  )(  (
-    (  /  \  )
-     \ \  / /
-      )  ( (
-     (______)
-"""
+MASCOT = """\
+   )  (  )
+  (  {face}  )
+   )    (
+  (  \\/  )
+   )    (
+  (______)"""
+
+MASCOT_IDLE_FACE = ">_<"
+THINK_FACES = ["-_-", "o_O", "x_x", ">_<"]
+
+
+def mascot_text(face=MASCOT_IDLE_FACE, up=False):
+    art = MASCOT.format(face=face)
+    art = "\n" + art if up else art + "\n"
+    return Text(art, style="bold red")
 
 
 def render_banner(theme, ref):
-    fire = Text(FIREBALL, style="bold red")
     name = Text("CHAOS", style=theme["banner"])
     tagline = Text("hackathon agent harness · made by Team Chaos", style=theme["info"])
     model = Text(f"model: {ref}", style=theme["info"])
     hints = Text("/model switch model · /clear reset · /exit quit", style=theme["info"])
     return Panel(
-        Group(fire, name, tagline, Text(), model, hints),
+        Group(mascot_text(), name, tagline, Text(), model, hints),
         border_style=theme["banner"],
         padding=(1, 3),
     )
@@ -62,9 +68,9 @@ def print_banner(console, theme, ref):
 
 
 def print_thinking(console, theme, reasoning):
-    panel = render_thinking(theme, reasoning)
-    if panel is not None:
-        console.print(panel)
+    block = render_thinking(theme, reasoning)
+    if block is not None:
+        console.print(block)
 
 
 def print_reply(console, theme, text):

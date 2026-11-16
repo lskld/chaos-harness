@@ -26,10 +26,11 @@ def _hex_color(style_str, default):
 class ChaosApp(App):
     CSS = """
     #topbar { dock: top; height: auto; }
-    #fire { width: auto; padding: 0 1; }
     #titles { width: 1fr; height: auto; }
+    #right { width: 16; height: auto; }
+    #mascot { height: 7; width: 16; text-align: right; }
+    #status { height: 1; width: 16; text-align: right; padding: 0 1; }
     #log { height: 1fr; padding: 0 1; }
-    #status { dock: right; width: 16; text-align: right; padding: 0 1; }
     #input { dock: bottom; }
     """
 
@@ -43,27 +44,29 @@ class ChaosApp(App):
         self.messages = []
         self._spinner_on = False
         self._spinner_frames = cycle("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
+        self._mascot_up = False
+        self._face_index = 0
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="topbar"):
-            yield Static(Text(ui.FIREBALL, style="bold red"), id="fire")
             with Vertical(id="titles"):
                 yield Static(Text("CHAOS", style=self.ui_theme["banner"]), id="name")
                 yield Static(f"model: {self.ref}", id="model")
                 yield Static("hackathon agent harness · made by Team Chaos", id="tagline")
-            yield Static("", id="status")
+            with Vertical(id="right"):
+                yield Static(ui.mascot_text(), id="mascot")
+                yield Static("", id="status")
         yield RichLog(id="log")
         yield Input(placeholder="ask chaos…  (/model · /clear · /exit)", id="input")
 
     def on_mount(self):
         theme = self.ui_theme
         self.query_one("#name").styles.color = _hex_color(theme["banner"], "#ffaf00")
-        self.query_one("#fire").styles.color = _hex_color("bold red", "#ff5f00")
         self.query_one("#model").styles.color = _hex_color(theme["info"], "#888888")
         self.query_one("#tagline").styles.color = _hex_color(theme["info"], "#888888")
         self.query_one("#input").styles.border = ("solid", _hex_color(theme["prompt"], "#00d7ff"))
         self.query_one("#status").styles.color = _hex_color(theme["info"], "#888888")
-        self.set_interval(0.08, self._tick_spinner)
+        self.set_interval(0.12, self._tick)
         self.log_widget.write(ui.render_info(theme, "type a prompt — /model switch model · /clear reset · /exit quit"))
         self.query_one("#input", Input).focus()
 
@@ -74,14 +77,25 @@ class ChaosApp(App):
     def action_exit_app(self):
         self.exit()
 
-    def _tick_spinner(self):
-        if self._spinner_on:
-            self.query_one("#status", Static).update(f"{next(self._spinner_frames)} thinking…")
+    def _tick(self):
+        if not self._spinner_on:
+            return
+        self.query_one("#status", Static).update(f"{next(self._spinner_frames)} thinking…")
+        face = ui.THINK_FACES[self._face_index % len(ui.THINK_FACES)]
+        self._face_index += 1
+        self._mascot_up = not self._mascot_up
+        self.query_one("#mascot", Static).update(ui.mascot_text(face, up=self._mascot_up))
 
     def _set_spinner(self, on):
         self._spinner_on = on
-        label = f"{next(self._spinner_frames)} thinking…" if on else ""
-        self.query_one("#status", Static).update(label)
+        if on:
+            self._face_index = 0
+            self._mascot_up = False
+            self.query_one("#status", Static).update(f"{next(self._spinner_frames)} thinking…")
+            self.query_one("#mascot", Static).update(ui.mascot_text(ui.THINK_FACES[0]))
+        else:
+            self.query_one("#status", Static).update("")
+            self.query_one("#mascot", Static).update(ui.mascot_text())
 
     def on_input_submitted(self, event: Input.Submitted):
         text = event.value.strip()

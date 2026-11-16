@@ -1,9 +1,11 @@
+import asyncio
 import threading
 import unittest
 from unittest.mock import patch
 
 from textual.widgets import Footer, Input, RichLog, Static
 
+from chaos import ui
 from chaos.app import ChaosApp
 from chaos.llm import Reply
 
@@ -56,7 +58,7 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(app.ref, "p/m2")
             self.assertIn("switched to p/m2", log_text(app))
 
-    async def test_spinner_in_topbar_visible_only_while_model_works(self):
+    async def test_mascot_and_spinner_animate_only_while_model_works(self):
         gate = threading.Event()
 
         def blocking_chat(**kwargs):
@@ -69,11 +71,15 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
                 app.query_one("#input", Input).value = "hi"
                 await pilot.press("enter")
                 await pilot.pause()
+                await asyncio.sleep(0.4)
                 self.assertIn("thinking", str(app.query_one("#status", Static).render()))
+                mascot = str(app.query_one("#mascot", Static).render())
+                self.assertTrue(any(f in mascot for f in ui.THINK_FACES))
                 gate.set()
                 await app.workers.wait_for_complete()
                 await pilot.pause()
                 self.assertEqual(str(app.query_one("#status", Static).render()), "")
+                self.assertIn(ui.MASCOT_IDLE_FACE, str(app.query_one("#mascot", Static).render()))
 
     async def test_clear_empties_log(self):
         app = ChaosApp(CFG, "p/m")
