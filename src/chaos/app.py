@@ -25,13 +25,13 @@ def _hex_color(style_str, default):
 
 class ChaosApp(App):
     CSS = """
-    #topbar { dock: top; height: auto; }
+    #topbar { dock: top; height: auto; padding: 1 2 0 2; }
     #titles { width: 1fr; height: auto; }
     #right { width: 16; height: auto; }
     #mascot { height: 6; width: 16; text-align: right; }
     #status { height: 1; width: 16; text-align: right; padding: 0 1; }
-    #log { height: 1fr; padding: 0 1; }
-    #input { dock: bottom; }
+    #log { height: 1fr; padding: 0 2; }
+    #input { dock: bottom; margin: 0 2 1 2; }
     """
 
     BINDINGS = [("ctrl+q", "exit_app", "Quit")]
