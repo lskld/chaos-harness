@@ -6,12 +6,13 @@ from rich.prompt import Prompt
 from rich.text import Text
 
 MASCOT = """\
-   ▄██▄
-  █▀██▀█
+  ▀ ▄ ▀
+ ▄█▀█▀█▄
+ █▀   ▀█
  █ {face} █
- █  ▀▀  █
-  ▀████▀"""
+ ▀█████▀"""
 
+MASCOT_FLAME_LINES = 2
 MASCOT_IDLE_FACE = ">_<"
 THINK_FACES = ["-_-", "o_O", "x_x", ">_<"]
 
@@ -19,9 +20,15 @@ THINK_FACES = ["-_-", "o_O", "x_x", ">_<"]
 def mascot_text(face=MASCOT_IDLE_FACE, up=False):
     lines = MASCOT.format(face=face).splitlines()
     width = max(len(line) for line in lines)
-    art = "\n".join(line.center(width) for line in lines)
-    art = "\n" + art if up else art + "\n"
-    return Text(art, style="bold red")
+    text = Text()
+    if up:
+        text.append("\n")
+    for i, line in enumerate(lines):
+        style = "bold bright_yellow" if i < MASCOT_FLAME_LINES else "bold red"
+        text.append(line.center(width) + "\n", style=style)
+    if not up:
+        text.append("\n")
+    return text
 
 
 def render_banner(theme, ref):
