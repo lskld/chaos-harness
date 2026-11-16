@@ -12,18 +12,13 @@ DEFAULT_THEME = {
 }
 
 EXAMPLE_CONFIG = {
-    "default_model": "openrouter/auto",
+    "default_model": "",
     "providers": {
-        "openrouter": {
-            "base_url": "https://openrouter.ai/api/v1",
-            "api_key": "sk-or-REPLACE_ME",
-            "models": ["auto", "anthropic/claude-sonnet-4.5", "google/gemini-3-pro-preview"],
-        },
-        "groq": {
-            "base_url": "https://api.groq.com/openai/v1",
-            "api_key": "gsk_REPLACE_ME",
-            "models": ["llama-3.3-70b-versatile"],
-        },
+        "my-provider": {
+            "base_url": "",
+            "api_key": "",
+            "models": [],
+        }
     },
     "theme": DEFAULT_THEME,
 }
@@ -39,7 +34,7 @@ def load(path=DEFAULT_CONFIG_PATH):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(EXAMPLE_CONFIG, indent=2) + "\n", encoding="utf-8")
         raise ConfigError(
-            f"no config found — wrote an example to {path}; add your API key and run again"
+            f"no config found — wrote an example to {path}; fill in a provider, then run again"
         )
     try:
         return json.loads(path.read_text(encoding="utf-8"))

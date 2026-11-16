@@ -7,20 +7,23 @@ for anyone to use, fork, and adapt.
 
 ```bash
 pip install -e .
-chaos          # first run writes an example ~/.chaos/config.json — add a provider + API key
+chaos          # first run writes an example ~/.chaos/config.json — fill in a provider
 chaos "hi"     # one-shot prompt
 ```
 
 ## Config (`~/.chaos/config.json`)
 
+The file is provider-agnostic: any API with an OpenAI-compatible
+`POST /chat/completions` endpoint works. Structure:
+
 ```json
 {
-  "default_model": "openrouter/auto",
+  "default_model": "",
   "providers": {
-    "openrouter": {
-      "base_url": "https://openrouter.ai/api/v1",
-      "api_key": "sk-or-...",
-      "models": ["auto", "anthropic/claude-sonnet-4.5"]
+    "my-provider": {
+      "base_url": "",
+      "api_key": "",
+      "models": []
     }
   },
   "theme": {
@@ -33,10 +36,12 @@ chaos "hi"     # one-shot prompt
 }
 ```
 
-Every provider is called through the OpenAI-compatible `POST /chat/completions`
-endpoint, so adding one block makes all of its models available. Pick a model with
-`--model provider/model` or the `/model` command inside the CLI. Colors are
-customizable via the `theme` block.
+Fill in one `providers` block per API you want to use: `base_url` is the API
+root, `api_key` its key, `models` the model IDs it serves. Set `default_model`
+to `"my-provider/<model-id>"`, or pick a model per run with `--model
+provider/model` or the `/model` command inside the CLI. Adding a provider block
+makes all of its models available immediately. Colors are customizable via the
+`theme` block.
 
 Inside the CLI: `/exit`, `/clear`, `/model [provider/model]`.
 
