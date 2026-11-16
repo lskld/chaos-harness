@@ -1,4 +1,5 @@
 import argparse
+import sys
 
 from rich.console import Console
 from rich.markup import escape
@@ -102,6 +103,11 @@ def main(argv=None):
             ui.print_error(console, theme, exc)
             return 1
         console.print(reply.text)
+        return 0
+    if sys.stdin.isatty():
+        from .app import ChaosApp
+
+        ChaosApp(cfg, ref).run()
         return 0
     repl(console, theme, cfg, ref)
     return 0

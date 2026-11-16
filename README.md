@@ -45,9 +45,12 @@ provider/model` or the `/model` command inside the CLI. Adding a provider block
 makes all of its models available immediately. Colors are customizable via the
 `theme` block.
 
-Inside the CLI you get a fireball banner, a scrolling chat — your prompts, the
-model's thinking when the provider returns it, and the reply as a rendered panel —
-and a themed input line. Commands: `/exit`, `/clear`, `/model [provider/model]`.
+`chaos` takes over the whole terminal (alternate screen): a fireball top bar with
+the current model, a scrollable chat — your prompts, the model's thinking when the
+provider returns it, and replies as rendered panels — and an input line docked at
+the bottom. Commands: `/exit` (or ctrl+q), `/clear`, `/model [provider/model]`.
+When stdin is piped it falls back to a plain print loop; `chaos "prompt"` stays
+one-shot and pipe-friendly.
 
 ## Development
 

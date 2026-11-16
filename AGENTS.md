@@ -6,10 +6,15 @@ tool calling yet.
 
 ## Layout (src layout)
 
-- `src/chaos/cli.py` — entry point and composition root: arg parsing, interactive
-  REPL loop, slash commands. No HTTP, config-file IO, or rendering here.
-- `src/chaos/ui.py` — all presentation: fireball banner, chat areas (thinking
-  panel, reply panel), spinner, themed input line, errors.
+- `src/chaos/cli.py` — entry point and composition root: arg parsing, one-shot mode,
+  dispatch to the full-screen app on a TTY (plain print loop when piped). No HTTP,
+  config-file IO, or rendering here.
+- `src/chaos/app.py` — the full-screen Textual app: fireball top bar with the current
+  model, scrollable log, spinner, input docked at the bottom; the agent call runs in
+  a worker thread.
+- `src/chaos/ui.py` — shared renderables (banner, user line, thinking panel, reply
+  panel, info/error) used by both the app and the piped fallback loop, plus the
+  themed prompt.
 - `src/chaos/config.py` — everything about `~/.chaos/config.json`: loading, example
   generation, theme, `provider/model` resolution.
 - `src/chaos/llm.py` — all HTTP: a single OpenAI-compatible `POST /chat/completions` call.
