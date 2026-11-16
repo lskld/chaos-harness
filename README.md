@@ -52,8 +52,13 @@ current model and an evil fireball mascot top-right — while the model thinks i
 bobs up and down, cycles thinking faces, and shows a `thinking…` spinner line below
 it. Below that: a scrollable chat (your prompts, the model's reasoning when the
 provider returns it, replies as markdown) and an input line docked at the bottom.
-Commands: `/exit` (or ctrl+q), `/clear`, `/model [provider/model]`.
-When stdin is piped it falls back to a plain print loop; `chaos "prompt"` stays
+Commands: `/help` (lists them all), `/exit` (or ctrl+q), `/clear`,
+`/model [provider/model]`, `/theme`.
+`/theme` opens a menu you navigate with ↑/↓ + enter (esc closes). Built-in themes:
+`fire` (default), `ocean`, `forest`, `sunset`, `mono` — switching re-themes the
+whole app live and **saves the choice** to `~/.chaos/config.json` (`theme_name`),
+so the app reopens with your theme; `/theme ocean` also works directly. When
+stdin is piped it falls back to a plain print loop; `chaos "prompt"` stays
 one-shot and pipe-friendly.
 
 ## Development

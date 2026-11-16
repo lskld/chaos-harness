@@ -20,6 +20,7 @@ def log_text(app):
 
 
 async def type_and_submit(app, pilot, text):
+    app.query_one("#input", Input).focus()
     app.query_one("#input", Input).value = text
     await pilot.press("enter")
     await app.workers.wait_for_complete()
@@ -91,6 +92,75 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(app.screen.styles.background, expected)
             for selector in ("#topbar", "#log", "#input"):
                 self.assertEqual(app.query_one(selector).styles.background, expected)
+
+    async def test_theme_picker_modal_switches_with_arrow_keys(self):
+        from textual.color import Color
+
+        from chaos.app import ThemePicker
+
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            await type_and_submit(app, pilot, "/theme")
+            self.assertIsInstance(app.screen, ThemePicker)
+            await pilot.press("down", "enter")
+            await pilot.pause()
+            self.assertEqual(app.theme_name, "ocean")
+            self.assertEqual(app.screen.styles.background, Color.parse("#0a1420"))
+            self.assertEqual(
+                app.query_one("#mascot", Static).styles.background, Color.parse("#0a1420")
+            )
+            self.assertNotIn("theme:", log_text(app))
+
+    async def test_theme_direct_name_and_unknown(self):
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            await type_and_submit(app, pilot, "/theme mono")
+            self.assertEqual(app.theme_name, "mono")
+            await type_and_submit(app, pilot, "/theme nope")
+            self.assertIn("unknown theme", log_text(app))
+
+    async def test_theme_choice_is_saved_to_config_and_used_on_restart(self):
+        import json
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            path.write_text(json.dumps(CFG), encoding="utf-8")
+            app = ChaosApp(CFG, "p/m", config_path=str(path))
+            async with app.run_test() as pilot:
+                await type_and_submit(app, pilot, "/theme mono")
+                self.assertEqual(app.theme_name, "mono")
+            saved = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(saved["theme_name"], "mono")
+            restarted = ChaosApp(saved, "p/m", config_path=str(path))
+            self.assertEqual(restarted.theme_name, "mono")
+
+    async def test_theme_picker_escape_keeps_theme(self):
+        from chaos.app import ThemePicker
+
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            await type_and_submit(app, pilot, "/theme")
+            self.assertIsInstance(app.screen, ThemePicker)
+            await pilot.press("escape")
+            await pilot.pause()
+            self.assertEqual(app.theme_name, "fire")
+
+    async def test_placeholder_is_bare_and_topbar_shows_help_hint(self):
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            self.assertEqual(app.query_one("#input", Input).placeholder, "ask chaos…")
+            self.assertIn("/help", str(app.query_one("#helpline", Static).render()))
+
+    async def test_help_lists_commands(self):
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            await type_and_submit(app, pilot, "/help")
+            text = log_text(app)
+            for cmd in ("/help", "/model", "/theme", "/clear", "/exit"):
+                self.assertIn(cmd, text)
 
     async def test_clear_empties_log(self):
         app = ChaosApp(CFG, "p/m")

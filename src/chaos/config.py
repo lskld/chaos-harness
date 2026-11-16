@@ -1,19 +1,11 @@
 import json
 from pathlib import Path
 
+from .themes import DEFAULT_THEME_NAME, THEMES
+
 DEFAULT_CONFIG_PATH = Path.home() / ".chaos" / "config.json"
 
-DEFAULT_THEME = {
-    "background": "#1a0d0a",
-    "banner": "bold #ffc94d",
-    "mascot": "bold #ff5f6d",
-    "prompt": "#ff87a2",
-    "user": "#fff3e8",
-    "assistant": "#ffd76a",
-    "error": "bold #ff4040",
-    "info": "#c4a3a3",
-    "thinking": "italic #c4a3a3",
-}
+DEFAULT_THEME = THEMES[DEFAULT_THEME_NAME]
 
 EXAMPLE_CONFIG = {
     "default_model": "",
@@ -46,10 +38,20 @@ def load(path=DEFAULT_CONFIG_PATH):
         raise ConfigError(f"invalid JSON in {path}: {exc}") from exc
 
 
-def theme(config):
-    merged = dict(DEFAULT_THEME)
+def save(path, config):
+    path = Path(path)
+    path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+
+
+def theme(config, name=None):
+    base = THEMES.get(name or config.get("theme_name") or DEFAULT_THEME_NAME, DEFAULT_THEME)
+    merged = dict(base)
     merged.update(config.get("theme", {}))
     return merged
+
+
+def theme_names():
+    return list(THEMES)
 
 
 def list_models(config):
