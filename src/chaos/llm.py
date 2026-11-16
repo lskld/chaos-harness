@@ -1,8 +1,15 @@
+from typing import NamedTuple
+
 import requests
 
 
 class LLMError(Exception):
     pass
+
+
+class Reply(NamedTuple):
+    text: str
+    reasoning: str = ""
 
 
 def chat(*, base_url, api_key, model, messages, timeout=120):
@@ -16,14 +23,22 @@ def chat(*, base_url, api_key, model, messages, timeout=120):
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=timeout)
     except requests.RequestException as exc:
-        raise LLMError(f"request to {url} failed: {exc}") from exc
+        raise LLMError(f"request to {url} failed: {type(exc).__name__}: {str(exc)[:200]}") from exc
     if response.status_code != 200:
         raise LLMError(f"API error {response.status_code} from {url}: {response.text[:300]}")
     try:
         message = response.json()["choices"][0]["message"]
     except (KeyError, IndexError, TypeError, ValueError) as exc:
         raise LLMError(f"unexpected response from {url}: {exc}") from exc
-    return _content_text(message.get("content"))
+    return Reply(
+        text=_content_text(message.get("content")),
+        reasoning=_reasoning_text(message),
+    )
+
+
+def _reasoning_text(message):
+    reasoning = message.get("reasoning") or message.get("reasoning_content") or ""
+    return reasoning if isinstance(reasoning, str) else ""
 
 
 def _content_text(content):

@@ -31,7 +31,9 @@ The file is provider-agnostic: any API with an OpenAI-compatible
     "user": "bold white",
     "assistant": "green",
     "error": "bold red",
-    "info": "dim"
+    "info": "dim",
+    "banner": "bold bright_yellow",
+    "thinking": "dim italic"
   }
 }
 ```
@@ -43,7 +45,14 @@ provider/model` or the `/model` command inside the CLI. Adding a provider block
 makes all of its models available immediately. Colors are customizable via the
 `theme` block.
 
-Inside the CLI: `/exit`, `/clear`, `/model [provider/model]`.
+`chaos` takes over the whole terminal (alternate screen): a top bar with the
+current model and an evil fireball mascot top-right — while the model thinks it
+bobs up and down, cycles thinking faces, and shows a `thinking…` spinner line below
+it. Below that: a scrollable chat (your prompts, the model's reasoning when the
+provider returns it, replies as markdown) and an input line docked at the bottom.
+Commands: `/exit` (or ctrl+q), `/clear`, `/model [provider/model]`.
+When stdin is piped it falls back to a plain print loop; `chaos "prompt"` stays
+one-shot and pipe-friendly.
 
 ## Development
 

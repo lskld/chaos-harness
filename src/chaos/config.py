@@ -9,6 +9,8 @@ DEFAULT_THEME = {
     "assistant": "green",
     "error": "bold red",
     "info": "dim",
+    "banner": "bold bright_yellow",
+    "thinking": "dim italic",
 }
 
 EXAMPLE_CONFIG = {
