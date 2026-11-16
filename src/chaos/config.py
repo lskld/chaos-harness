@@ -38,6 +38,11 @@ def load(path=DEFAULT_CONFIG_PATH):
         raise ConfigError(f"invalid JSON in {path}: {exc}") from exc
 
 
+def save(path, config):
+    path = Path(path)
+    path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+
+
 def theme(config, name=None):
     base = THEMES.get(name or config.get("theme_name") or DEFAULT_THEME_NAME, DEFAULT_THEME)
     merged = dict(base)

@@ -79,10 +79,11 @@ class ChaosApp(App):
 
     BINDINGS = [("ctrl+q", "exit_app", "Quit")]
 
-    def __init__(self, cfg, ref):
+    def __init__(self, cfg, ref, config_path=None):
         super().__init__()
-        self.cfg = cfg
+        self.cfg = dict(cfg)
         self.ref = ref
+        self.config_path = config_path
         self.theme_name = cfg.get("theme_name") or config_mod.DEFAULT_THEME_NAME
         self.ui_theme = config_mod.theme(cfg, self.theme_name)
         self.messages = []
@@ -251,6 +252,12 @@ class ChaosApp(App):
         self.ui_theme = config_mod.theme(self.cfg, name)
         self._apply_theme()
         self._rebuild_log()
+        if self.config_path is not None:
+            self.cfg["theme_name"] = name
+            try:
+                config_mod.save(self.config_path, self.cfg)
+            except OSError as exc:
+                self._log("error", f"could not save theme to config: {exc}")
 
     @work(thread=True)
     def _ask(self):

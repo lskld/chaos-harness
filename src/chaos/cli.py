@@ -117,7 +117,7 @@ def main(argv=None):
     if sys.stdin.isatty():
         from .app import ChaosApp
 
-        ChaosApp(cfg, ref).run()
+        ChaosApp(cfg, ref, args.config).run()
         return 0
     repl(console, theme, cfg, ref)
     return 0

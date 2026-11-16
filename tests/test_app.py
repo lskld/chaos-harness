@@ -119,6 +119,23 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             await type_and_submit(app, pilot, "/theme nope")
             self.assertIn("unknown theme", log_text(app))
 
+    async def test_theme_choice_is_saved_to_config_and_used_on_restart(self):
+        import json
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            path.write_text(json.dumps(CFG), encoding="utf-8")
+            app = ChaosApp(CFG, "p/m", config_path=str(path))
+            async with app.run_test() as pilot:
+                await type_and_submit(app, pilot, "/theme mono")
+                self.assertEqual(app.theme_name, "mono")
+            saved = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(saved["theme_name"], "mono")
+            restarted = ChaosApp(saved, "p/m", config_path=str(path))
+            self.assertEqual(restarted.theme_name, "mono")
+
     async def test_theme_picker_escape_keeps_theme(self):
         from chaos.app import ThemePicker
 
