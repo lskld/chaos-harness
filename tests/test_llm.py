@@ -5,8 +5,6 @@ import requests
 
 from chaos.llm import LLMError, chat
 
-OK_PAYLOAD = {"choices": [{"message": {"content": "hello there"}}]}
-
 
 def fake_response(status=200, payload=None, text=""):
     response = Mock()
@@ -16,17 +14,27 @@ def fake_response(status=200, payload=None, text=""):
     return response
 
 
+def payload(content=None, reasoning=None, extra_message=None):
+    message = {"content": content}
+    if reasoning is not None:
+        message["reasoning"] = reasoning
+    if extra_message:
+        message.update(extra_message)
+    return {"choices": [{"message": message}]}
+
+
 class ChatTest(unittest.TestCase):
     def test_posts_openai_compatible_payload(self):
         with patch("chaos.llm.requests.post") as post:
-            post.return_value = fake_response(payload=OK_PAYLOAD)
+            post.return_value = fake_response(payload=payload(content="hello there"))
             reply = chat(
                 base_url="https://api.example.com/v1/",
                 api_key="sk-test",
                 model="m",
                 messages=[{"role": "user", "content": "hi"}],
             )
-        self.assertEqual(reply, "hello there")
+        self.assertEqual(reply.text, "hello there")
+        self.assertEqual(reply.reasoning, "")
         self.assertEqual(post.call_args.args[0], "https://api.example.com/v1/chat/completions")
         kwargs = post.call_args.kwargs
         self.assertEqual(kwargs["headers"]["Authorization"], "Bearer sk-test")
@@ -54,22 +62,38 @@ class ChatTest(unittest.TestCase):
                 chat(base_url="https://api.example.com/v1", api_key="k", model="m", messages=[])
 
     def test_list_content_parts_are_joined(self):
-        payload = {"choices": [{"message": {"content": [
+        content = [
             {"type": "thinking", "thinking": "hmm"},
             {"type": "text", "text": "hel"},
             {"type": "text", "text": "lo"},
-        ]}}]}
+        ]
         with patch("chaos.llm.requests.post") as post:
-            post.return_value = fake_response(payload=payload)
+            post.return_value = fake_response(payload=payload(content=content))
             reply = chat(base_url="https://api.example.com/v1", api_key="k", model="m", messages=[])
-        self.assertEqual(reply, "hello")
+        self.assertEqual(reply.text, "hello")
 
     def test_none_content_returns_empty_string(self):
-        payload = {"choices": [{"message": {"content": None}}]}
         with patch("chaos.llm.requests.post") as post:
-            post.return_value = fake_response(payload=payload)
+            post.return_value = fake_response(payload=payload(content=None))
             reply = chat(base_url="https://api.example.com/v1", api_key="k", model="m", messages=[])
-        self.assertEqual(reply, "")
+        self.assertEqual(reply.text, "")
+
+    def test_reasoning_field_is_extracted(self):
+        with patch("chaos.llm.requests.post") as post:
+            post.return_value = fake_response(
+                payload=payload(content="answer", reasoning="step by step")
+            )
+            reply = chat(base_url="https://api.example.com/v1", api_key="k", model="m", messages=[])
+        self.assertEqual(reply.text, "answer")
+        self.assertEqual(reply.reasoning, "step by step")
+
+    def test_reasoning_content_field_is_extracted(self):
+        with patch("chaos.llm.requests.post") as post:
+            post.return_value = fake_response(
+                payload=payload(content="a", extra_message={"reasoning_content": "thinking..."})
+            )
+            reply = chat(base_url="https://api.example.com/v1", api_key="k", model="m", messages=[])
+        self.assertEqual(reply.reasoning, "thinking...")
 
 
 if __name__ == "__main__":

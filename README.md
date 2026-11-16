@@ -31,7 +31,9 @@ The file is provider-agnostic: any API with an OpenAI-compatible
     "user": "bold white",
     "assistant": "green",
     "error": "bold red",
-    "info": "dim"
+    "info": "dim",
+    "banner": "bold bright_yellow",
+    "thinking": "dim italic"
   }
 }
 ```
@@ -43,7 +45,9 @@ provider/model` or the `/model` command inside the CLI. Adding a provider block
 makes all of its models available immediately. Colors are customizable via the
 `theme` block.
 
-Inside the CLI: `/exit`, `/clear`, `/model [provider/model]`.
+Inside the CLI you get a fireball banner, a scrolling chat — your prompts, the
+model's thinking when the provider returns it, and the reply as a rendered panel —
+and a themed input line. Commands: `/exit`, `/clear`, `/model [provider/model]`.
 
 ## Development
 

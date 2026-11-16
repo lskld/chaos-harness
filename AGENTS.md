@@ -7,7 +7,9 @@ tool calling yet.
 ## Layout (src layout)
 
 - `src/chaos/cli.py` — entry point and composition root: arg parsing, interactive
-  REPL, slash commands. No HTTP or config-file IO here.
+  REPL loop, slash commands. No HTTP, config-file IO, or rendering here.
+- `src/chaos/ui.py` — all presentation: fireball banner, chat areas (thinking
+  panel, reply panel), spinner, themed input line, errors.
 - `src/chaos/config.py` — everything about `~/.chaos/config.json`: loading, example
   generation, theme, `provider/model` resolution.
 - `src/chaos/llm.py` — all HTTP: a single OpenAI-compatible `POST /chat/completions` call.
