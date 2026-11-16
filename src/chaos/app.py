@@ -3,7 +3,7 @@ from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Footer, Input, LoadingIndicator, RichLog, Static
+from textual.widgets import Input, LoadingIndicator, RichLog, Static
 
 from . import config as config_mod
 from . import ui
@@ -27,7 +27,8 @@ class ChaosApp(App):
     #fire { width: auto; padding: 0 1; }
     #titles { width: 1fr; height: auto; }
     #log { height: 1fr; padding: 0 1; }
-    #spinner { dock: bottom; height: 1; }
+    #spinnerbar { dock: bottom; height: 1; }
+    #spinner { width: 3; }
     #input { dock: bottom; }
     """
 
@@ -48,9 +49,10 @@ class ChaosApp(App):
                 yield Static(f"model: {self.ref}", id="model")
                 yield Static("hackathon agent harness · made by Team Chaos", id="tagline")
         yield RichLog(id="log")
-        yield LoadingIndicator(id="spinner")
+        with Horizontal(id="spinnerbar"):
+            yield LoadingIndicator(id="spinner")
+            yield Static("thinking…", id="spinnerlabel")
         yield Input(placeholder="ask chaos…  (/model · /clear · /exit)", id="input")
-        yield Footer()
 
     def on_mount(self):
         theme = self.ui_theme
@@ -59,7 +61,8 @@ class ChaosApp(App):
         self.query_one("#model").styles.color = _hex_color(theme["info"], "#888888")
         self.query_one("#tagline").styles.color = _hex_color(theme["info"], "#888888")
         self.query_one("#input").styles.border = ("solid", _hex_color(theme["prompt"], "#00d7ff"))
-        self.query_one("#spinner").display = False
+        self.query_one("#spinnerbar").display = False
+        self.query_one("#spinnerlabel").styles.color = _hex_color(theme["info"], "#888888")
         self.log_widget.write(ui.render_info(theme, "type a prompt — /model switch model · /clear reset · /exit quit"))
         self.query_one("#input", Input).focus()
 
@@ -88,7 +91,7 @@ class ChaosApp(App):
             return
         self.messages.append({"role": "user", "content": text})
         self.log_widget.write(ui.render_user(self.ui_theme, text))
-        self.query_one("#spinner", LoadingIndicator).display = True
+        self.query_one("#spinnerbar").display = True
         self._ask()
 
     def _model_command(self, arg):
@@ -116,14 +119,14 @@ class ChaosApp(App):
         self.call_from_thread(self._show_reply, reply)
 
     def _show_reply(self, reply):
-        self.query_one("#spinner", LoadingIndicator).display = False
+        self.query_one("#spinnerbar").display = False
         thinking = ui.render_thinking(self.ui_theme, reply.reasoning)
         if thinking is not None:
             self.log_widget.write(thinking)
         self.log_widget.write(ui.render_reply(self.ui_theme, reply.text))
 
     def _fail(self, exc):
-        self.query_one("#spinner", LoadingIndicator).display = False
+        self.query_one("#spinnerbar").display = False
         if self.messages and self.messages[-1]["role"] == "user":
             self.messages.pop()
         self.log_widget.write(ui.render_error(self.ui_theme, exc))
