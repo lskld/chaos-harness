@@ -81,6 +81,14 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(str(app.query_one("#status", Static).render()), "")
                 self.assertIn(ui.MASCOT_IDLE_FACE, str(app.query_one("#mascot", Static).render()))
 
+    async def test_screen_background_comes_from_theme(self):
+        from textual.color import Color
+
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            self.assertEqual(app.screen.styles.background, Color.parse("#1a0d0a"))
+
     async def test_clear_empties_log(self):
         app = ChaosApp(CFG, "p/m")
         async with app.run_test() as pilot:
