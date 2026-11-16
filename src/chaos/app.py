@@ -71,7 +71,6 @@ class ChaosApp(App):
         self.query_one("#input").styles.border = ("solid", _hex_color(theme["prompt"], "#00d7ff"))
         self.query_one("#status").styles.color = _hex_color(theme["info"], "#888888")
         self.set_interval(0.12, self._tick)
-        self.log_widget.write(ui.render_info(theme, "type a prompt — /model switch model · /clear reset · /exit quit"))
         self.query_one("#input", Input).focus()
 
     @property
