@@ -130,6 +130,13 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertEqual(app.theme_name, "fire")
 
+    async def test_placeholder_is_bare_and_topbar_shows_help_hint(self):
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            self.assertEqual(app.query_one("#input", Input).placeholder, "ask chaos…")
+            self.assertIn("chaos -help", str(app.query_one("#helpline", Static).render()))
+
     async def test_clear_empties_log(self):
         app = ChaosApp(CFG, "p/m")
         async with app.run_test() as pilot:

@@ -98,11 +98,12 @@ class ChaosApp(App):
                 yield Static(Text("CHAOS", style=self.ui_theme["banner"]), id="name")
                 yield Static(f"model: {self.ref}", id="model")
                 yield Static("hackathon agent harness · made by Team Chaos", id="tagline")
+                yield Static("chaos -help — list of commands", id="helpline")
             with Vertical(id="right"):
                 yield Static(ui.mascot_text(theme=self.ui_theme), id="mascot")
                 yield Static("", id="status")
         yield RichLog(id="log")
-        yield Input(placeholder="ask chaos…  (/model · /theme · /clear · /exit)", id="input")
+        yield Input(placeholder="ask chaos…", id="input")
 
     def on_mount(self):
         self._apply_theme()
@@ -118,6 +119,7 @@ class ChaosApp(App):
         self.query_one("#name").styles.color = _hex_color(theme["banner"], "#ffaf00")
         self.query_one("#model").styles.color = _hex_color(theme["info"], "#888888")
         self.query_one("#tagline").styles.color = _hex_color(theme["info"], "#888888")
+        self.query_one("#helpline").styles.color = _hex_color(theme["info"], "#888888")
         self.query_one("#input").styles.border = ("solid", _hex_color(theme["prompt"], "#00d7ff"))
         self.query_one("#status").styles.color = _hex_color(theme["info"], "#888888")
         self.query_one("#mascot", Static).update(ui.mascot_text(theme=self.ui_theme))
