@@ -5,6 +5,8 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.text import Text
 
+from . import config as config_mod
+
 MASCOT = """\
   ▀ ▄ ▀
  ▄█▀█▀█▄
@@ -17,14 +19,15 @@ MASCOT_IDLE_FACE = ">_<"
 THINK_FACES = ["-_-", "o_O", "x_x", ">_<"]
 
 
-def mascot_text(face=MASCOT_IDLE_FACE, up=False):
+def mascot_text(face=MASCOT_IDLE_FACE, up=False, theme=None):
+    theme = theme or config_mod.DEFAULT_THEME
     lines = MASCOT.format(face=face).splitlines()
     width = max(len(line) for line in lines)
     text = Text()
     if up:
         text.append("\n")
     for i, line in enumerate(lines):
-        style = "bold bright_yellow" if i < MASCOT_FLAME_LINES else "bold red"
+        style = theme["banner"] if i < MASCOT_FLAME_LINES else theme["mascot"]
         text.append(line.center(width) + "\n", style=style)
     if not up:
         text.append("\n")
@@ -37,7 +40,7 @@ def render_banner(theme, ref):
     model = Text(f"model: {ref}", style=theme["info"])
     hints = Text("/model switch model · /clear reset · /exit quit", style=theme["info"])
     return Panel(
-        Group(mascot_text(), name, tagline, Text(), model, hints),
+        Group(mascot_text(theme=theme), name, tagline, Text(), model, hints),
         border_style=theme["banner"],
         padding=(1, 3),
     )

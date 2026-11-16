@@ -83,6 +83,7 @@ class ConfigTest(unittest.TestCase):
         theme = config_mod.theme(cfg)
         self.assertEqual(theme["assistant"], "magenta")
         self.assertEqual(theme["prompt"], config_mod.DEFAULT_THEME["prompt"])
+        self.assertEqual(theme["background"], config_mod.DEFAULT_THEME["background"])
 
 
 if __name__ == "__main__":

@@ -4,13 +4,15 @@ from pathlib import Path
 DEFAULT_CONFIG_PATH = Path.home() / ".chaos" / "config.json"
 
 DEFAULT_THEME = {
-    "prompt": "bold cyan",
-    "user": "bold white",
-    "assistant": "green",
-    "error": "bold red",
-    "info": "dim",
-    "banner": "bold bright_yellow",
-    "thinking": "dim italic",
+    "background": "#1a0d0a",
+    "banner": "bold #ffc94d",
+    "mascot": "bold #ff5f6d",
+    "prompt": "#ff87a2",
+    "user": "#fff3e8",
+    "assistant": "#ffd76a",
+    "error": "bold #ff4040",
+    "info": "#c4a3a3",
+    "thinking": "italic #c4a3a3",
 }
 
 EXAMPLE_CONFIG = {
