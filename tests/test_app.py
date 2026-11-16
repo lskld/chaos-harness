@@ -87,7 +87,10 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
         app = ChaosApp(CFG, "p/m")
         async with app.run_test() as pilot:
             await pilot.pause()
-            self.assertEqual(app.screen.styles.background, Color.parse("#1a0d0a"))
+            expected = Color.parse("#1a0d0a")
+            self.assertEqual(app.screen.styles.background, expected)
+            for selector in ("#topbar", "#log", "#input"):
+                self.assertEqual(app.query_one(selector).styles.background, expected)
 
     async def test_clear_empties_log(self):
         app = ChaosApp(CFG, "p/m")

@@ -61,7 +61,10 @@ class ChaosApp(App):
 
     def on_mount(self):
         theme = self.ui_theme
-        self.screen.styles.background = _hex_color(theme["background"], "#1a0d0a")
+        bg = _hex_color(theme["background"], "#1a0d0a")
+        self.screen.styles.background = bg
+        for selector in ("#topbar", "#log", "#input"):
+            self.query_one(selector).styles.background = bg
         self.query_one("#name").styles.color = _hex_color(theme["banner"], "#ffaf00")
         self.query_one("#model").styles.color = _hex_color(theme["info"], "#888888")
         self.query_one("#tagline").styles.color = _hex_color(theme["info"], "#888888")

@@ -8,11 +8,11 @@ DEFAULT_THEME = {
     "banner": "bold #ffc94d",
     "mascot": "bold #ff5f6d",
     "prompt": "#ff87a2",
-    "user": "#ffe9d6",
-    "assistant": "#ffc94d",
+    "user": "#fff3e8",
+    "assistant": "#ffd76a",
     "error": "bold #ff4040",
-    "info": "#b08a8a",
-    "thinking": "italic #b08a8a",
+    "info": "#c4a3a3",
+    "thinking": "italic #c4a3a3",
 }
 
 EXAMPLE_CONFIG = {
