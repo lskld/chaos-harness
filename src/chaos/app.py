@@ -1,9 +1,11 @@
+from itertools import cycle
+
 from rich.style import Style
 from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Input, LoadingIndicator, RichLog, Static
+from textual.widgets import Input, RichLog, Static
 
 from . import config as config_mod
 from . import ui
@@ -28,7 +30,7 @@ class ChaosApp(App):
     #titles { width: 1fr; height: auto; }
     #log { height: 1fr; padding: 0 1; }
     #spinnerbar { dock: bottom; height: 1; }
-    #spinner { width: 3; }
+    #spinnerlabel { width: auto; }
     #input { dock: bottom; }
     """
 
@@ -40,6 +42,8 @@ class ChaosApp(App):
         self.ref = ref
         self.ui_theme = config_mod.theme(cfg)
         self.messages = []
+        self._spinner_on = False
+        self._spinner_frames = cycle("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="topbar"):
@@ -50,8 +54,7 @@ class ChaosApp(App):
                 yield Static("hackathon agent harness · made by Team Chaos", id="tagline")
         yield RichLog(id="log")
         with Horizontal(id="spinnerbar"):
-            yield LoadingIndicator(id="spinner")
-            yield Static("thinking…", id="spinnerlabel")
+            yield Static(id="spinnerlabel")
         yield Input(placeholder="ask chaos…  (/model · /clear · /exit)", id="input")
 
     def on_mount(self):
@@ -63,6 +66,7 @@ class ChaosApp(App):
         self.query_one("#input").styles.border = ("solid", _hex_color(theme["prompt"], "#00d7ff"))
         self.query_one("#spinnerbar").display = False
         self.query_one("#spinnerlabel").styles.color = _hex_color(theme["info"], "#888888")
+        self.set_interval(0.08, self._tick_spinner)
         self.log_widget.write(ui.render_info(theme, "type a prompt — /model switch model · /clear reset · /exit quit"))
         self.query_one("#input", Input).focus()
 
@@ -72,6 +76,16 @@ class ChaosApp(App):
 
     def action_exit_app(self):
         self.exit()
+
+    def _tick_spinner(self):
+        if self._spinner_on:
+            self.query_one("#spinnerlabel", Static).update(f"{next(self._spinner_frames)} thinking…")
+
+    def _set_spinner(self, on):
+        self._spinner_on = on
+        self.query_one("#spinnerbar").display = on
+        if on:
+            self.query_one("#spinnerlabel", Static).update(f"{next(self._spinner_frames)} thinking…")
 
     def on_input_submitted(self, event: Input.Submitted):
         text = event.value.strip()
@@ -91,7 +105,7 @@ class ChaosApp(App):
             return
         self.messages.append({"role": "user", "content": text})
         self.log_widget.write(ui.render_user(self.ui_theme, text))
-        self.query_one("#spinnerbar").display = True
+        self._set_spinner(True)
         self._ask()
 
     def _model_command(self, arg):
@@ -119,14 +133,14 @@ class ChaosApp(App):
         self.call_from_thread(self._show_reply, reply)
 
     def _show_reply(self, reply):
-        self.query_one("#spinnerbar").display = False
+        self._set_spinner(False)
         thinking = ui.render_thinking(self.ui_theme, reply.reasoning)
         if thinking is not None:
             self.log_widget.write(thinking)
         self.log_widget.write(ui.render_reply(self.ui_theme, reply.text))
 
     def _fail(self, exc):
-        self.query_one("#spinnerbar").display = False
+        self._set_spinner(False)
         if self.messages and self.messages[-1]["role"] == "user":
             self.messages.pop()
         self.log_widget.write(ui.render_error(self.ui_theme, exc))

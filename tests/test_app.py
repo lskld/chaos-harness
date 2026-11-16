@@ -1,7 +1,8 @@
+import threading
 import unittest
 from unittest.mock import patch
 
-from textual.widgets import Footer, Input, RichLog
+from textual.widgets import Footer, Input, RichLog, Static
 
 from chaos.app import ChaosApp
 from chaos.llm import Reply
@@ -54,6 +55,26 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             await type_and_submit(app, pilot, "/model p/m2")
             self.assertEqual(app.ref, "p/m2")
             self.assertIn("switched to p/m2", log_text(app))
+
+    async def test_spinner_bar_visible_only_while_model_works(self):
+        gate = threading.Event()
+
+        def blocking_chat(**kwargs):
+            gate.wait(10)
+            return Reply(text="done")
+
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            with patch("chaos.agent.chat", side_effect=blocking_chat):
+                app.query_one("#input", Input).value = "hi"
+                await pilot.press("enter")
+                await pilot.pause()
+                self.assertTrue(app.query_one("#spinnerbar").display)
+                self.assertIn("thinking", str(app.query_one("#spinnerlabel", Static).render()))
+                gate.set()
+                await app.workers.wait_for_complete()
+                await pilot.pause()
+                self.assertFalse(app.query_one("#spinnerbar").display)
 
     async def test_clear_empties_log(self):
         app = ChaosApp(CFG, "p/m")

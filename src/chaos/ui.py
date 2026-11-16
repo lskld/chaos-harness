@@ -36,20 +36,16 @@ def render_user(theme, text):
 def render_thinking(theme, reasoning):
     if not reasoning:
         return None
-    return Panel(
-        escape(reasoning),
-        title=f"[{theme['thinking']}]thinking[/]",
-        title_align="left",
-        border_style=theme["thinking"],
+    return Group(
+        Text.from_markup(f"[{theme['thinking']}]thinking[/]"),
+        Text(reasoning, style=theme["thinking"]),
     )
 
 
 def render_reply(theme, text):
-    return Panel(
+    return Group(
+        Text.from_markup(f"[{theme['assistant']}]chaos[/]"),
         Markdown(text),
-        title=f"[{theme['assistant']}]chaos[/]",
-        title_align="left",
-        border_style=theme["assistant"],
     )
 
 
