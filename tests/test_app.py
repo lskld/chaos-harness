@@ -20,6 +20,7 @@ def log_text(app):
 
 
 async def type_and_submit(app, pilot, text):
+    app.query_one("#input", Input).focus()
     app.query_one("#input", Input).value = text
     await pilot.press("enter")
     await app.workers.wait_for_complete()
@@ -92,22 +93,42 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             for selector in ("#topbar", "#log", "#input"):
                 self.assertEqual(app.query_one(selector).styles.background, expected)
 
-    async def test_theme_command_lists_and_switches_live(self):
+    async def test_theme_picker_modal_switches_with_arrow_keys(self):
         from textual.color import Color
+
+        from chaos.app import ThemePicker
 
         app = ChaosApp(CFG, "p/m")
         async with app.run_test() as pilot:
             await type_and_submit(app, pilot, "/theme")
-            text = log_text(app)
-            self.assertIn("* fire", text)
-            for name in ("ocean", "forest", "sunset", "mono"):
-                self.assertIn(name, text)
-            await type_and_submit(app, pilot, "/theme ocean")
+            self.assertIsInstance(app.screen, ThemePicker)
+            await pilot.press("down", "enter")
+            await pilot.pause()
             self.assertEqual(app.theme_name, "ocean")
             self.assertEqual(app.screen.styles.background, Color.parse("#0a1420"))
+            self.assertEqual(
+                app.query_one("#mascot", Static).styles.background, Color.parse("#0a1420")
+            )
             self.assertIn("theme: ocean", log_text(app))
+
+    async def test_theme_direct_name_and_unknown(self):
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            await type_and_submit(app, pilot, "/theme mono")
+            self.assertEqual(app.theme_name, "mono")
             await type_and_submit(app, pilot, "/theme nope")
             self.assertIn("unknown theme", log_text(app))
+
+    async def test_theme_picker_escape_keeps_theme(self):
+        from chaos.app import ThemePicker
+
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            await type_and_submit(app, pilot, "/theme")
+            self.assertIsInstance(app.screen, ThemePicker)
+            await pilot.press("escape")
+            await pilot.pause()
+            self.assertEqual(app.theme_name, "fire")
 
     async def test_clear_empties_log(self):
         app = ChaosApp(CFG, "p/m")

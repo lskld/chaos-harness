@@ -4,8 +4,11 @@ from rich.style import Style
 from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
+from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Input, RichLog, Static
+from textual.screen import ModalScreen
+from textual.widgets import Input, RichLog, SelectionList, Static
+from textual.widgets.selection_list import Selection
 
 from . import config as config_mod
 from . import themes as themes_mod
@@ -22,6 +25,45 @@ def _hex_color(style_str, default):
         return hex_value if hex_value.startswith("#") else "#" + hex_value
     except Exception:
         return default
+
+
+class ThemePicker(ModalScreen):
+    CSS = """
+    ThemePicker { align: center middle; }
+    #picker { width: 42; height: auto; max-height: 14; border: round; padding: 1 2; }
+    """
+
+    BINDINGS = [("escape", "dismiss"), Binding("enter", "pick", "Pick", priority=True)]
+
+    def __init__(self, current, names, bg, accent):
+        super().__init__()
+        self._current = current
+        self._names = names
+        self._bg = bg
+        self._accent = accent
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="picker"):
+            yield Static("pick a theme — ↑/↓ + enter, esc to close", id="hint")
+            yield SelectionList(
+                *[Selection(name, name, name == self._current) for name in self._names],
+                id="list",
+            )
+
+    def on_mount(self):
+        picker = self.query_one("#picker")
+        picker.styles.background = self._bg
+        picker.styles.border = ("round", self._accent)
+        self.query_one("#hint").styles.color = self._accent
+        self.query_one("#list", SelectionList).focus()
+
+    def on_selection_list_option_selected(self, event: SelectionList.OptionSelected):
+        self.dismiss(event.option.value)
+
+    def action_pick(self):
+        selection_list = self.query_one("#list", SelectionList)
+        if selection_list.highlighted is not None:
+            self.dismiss(selection_list.options[selection_list.highlighted].value)
 
 
 class ChaosApp(App):
@@ -71,8 +113,8 @@ class ChaosApp(App):
         theme = self.ui_theme
         bg = _hex_color(theme["background"], "#1a0d0a")
         self.screen.styles.background = bg
-        for selector in ("#topbar", "#log", "#input"):
-            self.query_one(selector).styles.background = bg
+        for widget in self.query("#topbar, #topbar *, #log, #input"):
+            widget.styles.background = bg
         self.query_one("#name").styles.color = _hex_color(theme["banner"], "#ffaf00")
         self.query_one("#model").styles.color = _hex_color(theme["info"], "#888888")
         self.query_one("#tagline").styles.color = _hex_color(theme["info"], "#888888")
@@ -173,19 +215,31 @@ class ChaosApp(App):
         self._log("info", f"switched to {arg}")
 
     def _theme_command(self, arg):
-        if not arg:
-            for name in config_mod.theme_names():
-                marker = "*" if name == self.theme_name else " "
-                self._log("info", f"{marker} {name}")
+        if arg:
+            self._switch_theme(arg)
             return
-        if arg not in themes_mod.THEMES:
-            self._log("error", f"unknown theme {arg!r}; available: {', '.join(config_mod.theme_names())}")
+        theme = self.ui_theme
+        self.push_screen(
+            ThemePicker(
+                self.theme_name,
+                config_mod.theme_names(),
+                _hex_color(theme["background"], "#1a0d0a"),
+                _hex_color(theme["prompt"], "#ff87a2"),
+            ),
+            callback=self._switch_theme,
+        )
+
+    def _switch_theme(self, name):
+        if not name:
             return
-        self.theme_name = arg
-        self.ui_theme = config_mod.theme(self.cfg, arg)
+        if name not in themes_mod.THEMES:
+            self._log("error", f"unknown theme {name!r}; available: {', '.join(config_mod.theme_names())}")
+            return
+        self.theme_name = name
+        self.ui_theme = config_mod.theme(self.cfg, name)
         self._apply_theme()
         self._rebuild_log()
-        self._log("info", f"theme: {arg}")
+        self._log("info", f"theme: {name}")
 
     @work(thread=True)
     def _ask(self):
