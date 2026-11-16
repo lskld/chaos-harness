@@ -239,7 +239,6 @@ class ChaosApp(App):
         self.ui_theme = config_mod.theme(self.cfg, name)
         self._apply_theme()
         self._rebuild_log()
-        self._log("info", f"theme: {name}")
 
     @work(thread=True)
     def _ask(self):

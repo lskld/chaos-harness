@@ -109,7 +109,7 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(
                 app.query_one("#mascot", Static).styles.background, Color.parse("#0a1420")
             )
-            self.assertIn("theme: ocean", log_text(app))
+            self.assertNotIn("theme:", log_text(app))
 
     async def test_theme_direct_name_and_unknown(self):
         app = ChaosApp(CFG, "p/m")
