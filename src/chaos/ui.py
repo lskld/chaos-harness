@@ -8,10 +8,9 @@ from rich.text import Text
 MASCOT = """\
    )  (  )
   (  {face}  )
-   )    (
-  (  \\/  )
-   )    (
-  (______)"""
+ (    \\/    )
+  )        (
+  (________)"""
 
 MASCOT_IDLE_FACE = ">_<"
 THINK_FACES = ["-_-", "o_O", "x_x", ">_<"]

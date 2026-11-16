@@ -28,7 +28,7 @@ class ChaosApp(App):
     #topbar { dock: top; height: auto; }
     #titles { width: 1fr; height: auto; }
     #right { width: 16; height: auto; }
-    #mascot { height: 7; width: 16; text-align: right; }
+    #mascot { height: 6; width: 16; text-align: right; }
     #status { height: 1; width: 16; text-align: right; padding: 0 1; }
     #log { height: 1fr; padding: 0 1; }
     #input { dock: bottom; }
