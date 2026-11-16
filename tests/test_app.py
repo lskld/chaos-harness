@@ -135,7 +135,15 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
         async with app.run_test() as pilot:
             await pilot.pause()
             self.assertEqual(app.query_one("#input", Input).placeholder, "ask chaos…")
-            self.assertIn("chaos -help", str(app.query_one("#helpline", Static).render()))
+            self.assertIn("/help", str(app.query_one("#helpline", Static).render()))
+
+    async def test_help_lists_commands(self):
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            await type_and_submit(app, pilot, "/help")
+            text = log_text(app)
+            for cmd in ("/help", "/model", "/theme", "/clear", "/exit"):
+                self.assertIn(cmd, text)
 
     async def test_clear_empties_log(self):
         app = ChaosApp(CFG, "p/m")

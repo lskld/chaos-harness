@@ -52,7 +52,8 @@ current model and an evil fireball mascot top-right — while the model thinks i
 bobs up and down, cycles thinking faces, and shows a `thinking…` spinner line below
 it. Below that: a scrollable chat (your prompts, the model's reasoning when the
 provider returns it, replies as markdown) and an input line docked at the bottom.
-Commands: `/exit` (or ctrl+q), `/clear`, `/model [provider/model]`, `/theme`.
+Commands: `/help` (lists them all), `/exit` (or ctrl+q), `/clear`,
+`/model [provider/model]`, `/theme`.
 `/theme` opens a menu you navigate with ↑/↓ + enter (esc closes). Built-in themes:
 `fire` (default), `ocean`, `forest`, `sunset`, `mono` — switching re-themes the
 whole app live; `/theme ocean` also works directly, and `"theme_name": "ocean"`

@@ -53,6 +53,16 @@ def repl(console, theme, cfg, ref):
             continue
         if command in ("/exit", "/quit"):
             return
+        if command == "/help":
+            for line in (
+                "/help — show this list",
+                "/model [provider/model] — list or switch model",
+                "/theme [name] — pick a color theme",
+                "/clear — clear the chat",
+                "/exit — quit",
+            ):
+                ui.print_info(console, theme, line)
+            continue
         if command == "/clear":
             messages.clear()
             ui.print_info(console, theme, "history cleared")

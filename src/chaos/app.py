@@ -98,7 +98,7 @@ class ChaosApp(App):
                 yield Static(Text("CHAOS", style=self.ui_theme["banner"]), id="name")
                 yield Static(f"model: {self.ref}", id="model")
                 yield Static("hackathon agent harness · made by Team Chaos", id="tagline")
-                yield Static("chaos -help — list of commands", id="helpline")
+                yield Static("type /help for the list of commands", id="helpline")
             with Vertical(id="right"):
                 yield Static(ui.mascot_text(theme=self.ui_theme), id="mascot")
                 yield Static("", id="status")
@@ -187,6 +187,16 @@ class ChaosApp(App):
             self.messages.clear()
             self._log_items.clear()
             self.log_widget.clear()
+            return
+        if text == "/help":
+            for line in (
+                "/help — show this list",
+                "/model [provider/model] — list or switch model",
+                "/theme [name] — pick a color theme",
+                "/clear — clear the chat",
+                "/exit — quit (ctrl+q works too)",
+            ):
+                self._log("info", line)
             return
         if text == "/model" or text.startswith("/model "):
             arg = text.split(maxsplit=1)[1] if " " in text else ""
