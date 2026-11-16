@@ -35,7 +35,7 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn("hmm", text)
             self.assertIn("hello", text)
             self.assertEqual(app.messages[-1], {"role": "assistant", "content": "hello **world**"})
-            self.assertFalse(app.query_one("#spinnerbar").display)
+            self.assertEqual(str(app.query_one("#status", Static).render()), "")
             self.assertEqual(len(app.query(Footer)), 0)
 
     async def test_error_is_shown_and_user_message_popped(self):
@@ -56,7 +56,7 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(app.ref, "p/m2")
             self.assertIn("switched to p/m2", log_text(app))
 
-    async def test_spinner_bar_visible_only_while_model_works(self):
+    async def test_spinner_in_topbar_visible_only_while_model_works(self):
         gate = threading.Event()
 
         def blocking_chat(**kwargs):
@@ -69,12 +69,11 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
                 app.query_one("#input", Input).value = "hi"
                 await pilot.press("enter")
                 await pilot.pause()
-                self.assertTrue(app.query_one("#spinnerbar").display)
-                self.assertIn("thinking", str(app.query_one("#spinnerlabel", Static).render()))
+                self.assertIn("thinking", str(app.query_one("#status", Static).render()))
                 gate.set()
                 await app.workers.wait_for_complete()
                 await pilot.pause()
-                self.assertFalse(app.query_one("#spinnerbar").display)
+                self.assertEqual(str(app.query_one("#status", Static).render()), "")
 
     async def test_clear_empties_log(self):
         app = ChaosApp(CFG, "p/m")

@@ -29,8 +29,7 @@ class ChaosApp(App):
     #fire { width: auto; padding: 0 1; }
     #titles { width: 1fr; height: auto; }
     #log { height: 1fr; padding: 0 1; }
-    #spinnerbar { dock: bottom; height: 1; }
-    #spinnerlabel { width: auto; }
+    #status { dock: right; width: 16; text-align: right; padding: 0 1; }
     #input { dock: bottom; }
     """
 
@@ -52,9 +51,8 @@ class ChaosApp(App):
                 yield Static(Text("CHAOS", style=self.ui_theme["banner"]), id="name")
                 yield Static(f"model: {self.ref}", id="model")
                 yield Static("hackathon agent harness · made by Team Chaos", id="tagline")
+            yield Static("", id="status")
         yield RichLog(id="log")
-        with Horizontal(id="spinnerbar"):
-            yield Static(id="spinnerlabel")
         yield Input(placeholder="ask chaos…  (/model · /clear · /exit)", id="input")
 
     def on_mount(self):
@@ -64,8 +62,7 @@ class ChaosApp(App):
         self.query_one("#model").styles.color = _hex_color(theme["info"], "#888888")
         self.query_one("#tagline").styles.color = _hex_color(theme["info"], "#888888")
         self.query_one("#input").styles.border = ("solid", _hex_color(theme["prompt"], "#00d7ff"))
-        self.query_one("#spinnerbar").display = False
-        self.query_one("#spinnerlabel").styles.color = _hex_color(theme["info"], "#888888")
+        self.query_one("#status").styles.color = _hex_color(theme["info"], "#888888")
         self.set_interval(0.08, self._tick_spinner)
         self.log_widget.write(ui.render_info(theme, "type a prompt — /model switch model · /clear reset · /exit quit"))
         self.query_one("#input", Input).focus()
@@ -79,13 +76,12 @@ class ChaosApp(App):
 
     def _tick_spinner(self):
         if self._spinner_on:
-            self.query_one("#spinnerlabel", Static).update(f"{next(self._spinner_frames)} thinking…")
+            self.query_one("#status", Static).update(f"{next(self._spinner_frames)} thinking…")
 
     def _set_spinner(self, on):
         self._spinner_on = on
-        self.query_one("#spinnerbar").display = on
-        if on:
-            self.query_one("#spinnerlabel", Static).update(f"{next(self._spinner_frames)} thinking…")
+        label = f"{next(self._spinner_frames)} thinking…" if on else ""
+        self.query_one("#status", Static).update(label)
 
     def on_input_submitted(self, event: Input.Submitted):
         text = event.value.strip()
