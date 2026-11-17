@@ -28,6 +28,8 @@ class RespondTest(unittest.TestCase):
             respond(CFG, "p/m", messages)
         self.assertEqual(messages[0]["role"], "system")
         self.assertIn("workspace rooted at", messages[0]["content"])
+        self.assertIn("never list or read the workspace", messages[0]["content"])
+        self.assertIn("without any tool call", messages[0]["content"])
         with patch("chaos.agent.chat", return_value=Reply(text="again")):
             respond(CFG, "p/m", messages)
         self.assertEqual([m["role"] for m in messages].count("system"), 1)
