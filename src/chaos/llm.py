@@ -1,3 +1,4 @@
+import json
 from typing import NamedTuple
 
 import requests
@@ -10,16 +11,20 @@ class LLMError(Exception):
 class Reply(NamedTuple):
     text: str
     reasoning: str = ""
+    tool_calls: tuple = ()
+    events: tuple = ()
 
 
-def chat(*, base_url, api_key, model, messages, timeout=120):
-    """One OpenAI-compatible chat completion call; returns the assistant text."""
+def chat(*, base_url, api_key, model, messages, tools=None, timeout=120):
+    """One OpenAI-compatible chat completion call; returns the assistant text and any tool calls."""
     url = base_url.rstrip("/") + "/chat/completions"
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
     payload = {"model": model, "messages": messages}
+    if tools:
+        payload["tools"] = tools
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=timeout)
     except requests.RequestException as exc:
@@ -33,7 +38,30 @@ def chat(*, base_url, api_key, model, messages, timeout=120):
     return Reply(
         text=_content_text(message.get("content")),
         reasoning=_reasoning_text(message),
+        tool_calls=_tool_calls(message),
     )
+
+
+def _tool_calls(message):
+    """Normalize tool_calls to the canonical spec shape ({id, type, function: {name, arguments}}),
+    so echoing them back into the history is accepted by strictly-validating APIs."""
+    calls = message.get("tool_calls") or []
+    parsed = []
+    for call in calls:
+        if not isinstance(call, dict):
+            continue
+        function = call.get("function") or {}
+        arguments = function.get("arguments", "")
+        if not isinstance(arguments, str):
+            arguments = json.dumps(arguments)
+        parsed.append(
+            {
+                "id": call.get("id") or "",
+                "type": "function",
+                "function": {"name": function.get("name") or "", "arguments": arguments},
+            }
+        )
+    return tuple(parsed)
 
 
 def _reasoning_text(message):

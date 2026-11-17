@@ -72,6 +72,21 @@ class ReplCommandTest(unittest.TestCase):
                 out = run_repl(["hi", "/exit"], cfg, path)
             self.assertIn("yo", out)
 
+    def test_tool_events_are_printed_in_the_repl(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            path.write_text(json.dumps(CFG), encoding="utf-8")
+            cfg = config_mod.load(path)
+            event = {
+                "tool": "write_file",
+                "arguments": {"path": "x.py", "content": "print(1)"},
+                "result": {"ok": True, "bytes": 8},
+            }
+            with patch("chaos.cli.respond", return_value=Reply(text="yo", events=(event,))):
+                out = run_repl(["hi", "/exit"], cfg, path)
+            self.assertIn("write_file x.py", out)
+            self.assertIn("yo", out)
+
 
 if __name__ == "__main__":
     unittest.main()

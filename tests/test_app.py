@@ -37,13 +37,30 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(app.messages[-1], {"role": "assistant", "content": "hello **world**"})
             self.assertEqual(str(app.query_one("#status", Static).render()), "")
 
+    async def test_tool_events_are_logged_before_the_reply(self):
+        event = {
+            "tool": "edit_file",
+            "arguments": {"path": "a.py", "old_str": "x", "new_str": "y"},
+            "result": {"ok": True, "diff": "-x\n+y\n"},
+        }
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            with patch(
+                "chaos.app.respond", return_value=Reply(text="done", events=(event,))
+            ):
+                await type_and_submit(app, pilot, "hi")
+            text = log_text(app)
+            self.assertIn("edit_file a.py", text)
+            self.assertIn("+y", text)
+            self.assertIn("done", text)
+
     async def test_error_is_shown_and_user_message_popped(self):
         app = ChaosApp(CFG, "p/m")
         async with app.run_test() as pilot:
             with patch("chaos.agent.chat", side_effect=Exception("boom")):
                 await type_and_submit(app, pilot, "hi")
             self.assertIn("error: boom", log_text(app))
-            self.assertEqual(app.messages, [])
+            self.assertEqual([m["role"] for m in app.messages], ["system"])
 
     async def test_model_command_without_arg_opens_picker(self):
         from chaos.app import ModelPicker

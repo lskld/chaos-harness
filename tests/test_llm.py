@@ -95,6 +95,70 @@ class ChatTest(unittest.TestCase):
             reply = chat(base_url="https://api.example.com/v1", api_key="k", model="m", messages=[])
         self.assertEqual(reply.reasoning, "thinking...")
 
+    def test_tools_are_sent_in_payload_when_given(self):
+        tools_payload = [{"type": "function", "function": {"name": "read_file"}}]
+        with patch("chaos.llm.requests.post") as post:
+            post.return_value = fake_response(payload=payload(content="hi"))
+            chat(
+                base_url="https://api.example.com/v1",
+                api_key="k",
+                model="m",
+                messages=[],
+                tools=tools_payload,
+            )
+        self.assertEqual(post.call_args.kwargs["json"]["tools"], tools_payload)
+
+    def test_tools_are_omitted_from_payload_by_default(self):
+        with patch("chaos.llm.requests.post") as post:
+            post.return_value = fake_response(payload=payload(content="hi"))
+            chat(base_url="https://api.example.com/v1", api_key="k", model="m", messages=[])
+        self.assertNotIn("tools", post.call_args.kwargs["json"])
+
+    def test_tool_calls_are_parsed_into_canonical_shape(self):
+        message = {
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "edit_file", "arguments": '{"path": "a.py"}'},
+                }
+            ],
+        }
+        with patch("chaos.llm.requests.post") as post:
+            post.return_value = fake_response(payload={"choices": [{"message": message}]})
+            reply = chat(base_url="https://api.example.com/v1", api_key="k", model="m", messages=[])
+        self.assertEqual(
+            reply.tool_calls,
+            (
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "edit_file", "arguments": '{"path": "a.py"}'},
+                },
+            ),
+        )
+        self.assertEqual(reply.text, "")
+
+    def test_tool_call_arguments_given_as_object_are_serialized(self):
+        message = {
+            "content": "",
+            "tool_calls": [
+                {"id": "c", "function": {"name": "read_file", "arguments": {"path": "a.py"}}}
+            ],
+        }
+        with patch("chaos.llm.requests.post") as post:
+            post.return_value = fake_response(payload={"choices": [{"message": message}]})
+            reply = chat(base_url="https://api.example.com/v1", api_key="k", model="m", messages=[])
+        self.assertEqual(reply.tool_calls[0]["function"]["arguments"], '{"path": "a.py"}')
+
+    def test_no_tool_calls_by_default(self):
+        with patch("chaos.llm.requests.post") as post:
+            post.return_value = fake_response(payload=payload(content="hi"))
+            reply = chat(base_url="https://api.example.com/v1", api_key="k", model="m", messages=[])
+        self.assertEqual(reply.tool_calls, ())
+        self.assertEqual(reply.events, ())
+
 
 if __name__ == "__main__":
     unittest.main()

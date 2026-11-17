@@ -70,6 +70,28 @@ def render_reply(theme, text):
     )
 
 
+def render_tool(theme, event):
+    tool = str(event.get("tool", "?"))
+    args = event.get("arguments") if isinstance(event.get("arguments"), dict) else {}
+    result = event.get("result") if isinstance(event.get("result"), dict) else {}
+    bits = []
+    if "path" in args:
+        bits.append(str(args["path"]))
+    if tool == "edit_file":
+        bits.append(f"replace {len(str(args.get('old_str', '')))} chars")
+    elif tool == "write_file":
+        bits.append(f"write {len(str(args.get('content', '')))} chars")
+    header = " ".join(["⚒", tool, *bits])
+    parts = [Text.from_markup(f"[{theme['info']}]{escape(header)}[/]")]
+    if result and not result.get("ok", True):
+        error = escape(str(result.get("error", "")))
+        parts.append(Text.from_markup(f"[{theme['error']}]  error: {error}[/]"))
+    diff = result.get("diff")
+    if diff:
+        parts.append(Text(diff, style=theme["info"]))
+    return Group(*parts)
+
+
 def render_info(theme, text):
     return Text.from_markup(f"[{theme['info']}]{escape(text)}[/]")
 
@@ -89,6 +111,10 @@ def print_thinking(console, theme, reasoning):
 
 def print_reply(console, theme, text):
     console.print(render_reply(theme, text))
+
+
+def print_tool(console, theme, event):
+    console.print(render_tool(theme, event))
 
 
 def print_info(console, theme, text):

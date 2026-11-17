@@ -1,8 +1,8 @@
 # AGENTS.md — working on chaos-harness
 
 chaos-harness is a hackathon-specific, bring-your-own-model agent CLI (made by
-Team Chaos, open for anyone to use). Current scope: prompt → answer only, no
-tool calling yet.
+Team Chaos, open for anyone to use). The agent can read and edit files in the
+workspace via function tools.
 
 ## Layout (src layout)
 
@@ -22,9 +22,15 @@ tool calling yet.
 - `src/chaos/themes.py` — the built-in color themes (`THEMES`, `DEFAULT_THEME_NAME="fire"`).
 - `src/chaos/config.py` — everything about `~/.chaos/config.json`: loading, example
   generation, theme selection/overrides, `provider/model` resolution.
-- `src/chaos/llm.py` — all HTTP: a single OpenAI-compatible `POST /chat/completions` call.
-- `src/chaos/agent.py` — the agent seam: v1 makes one call per turn; tool calling,
-  budget tracking, and tracing plug in here later.
+- `src/chaos/llm.py` — all HTTP: a single OpenAI-compatible `POST /chat/completions` call,
+  with optional `tools` in the payload and `tool_calls` parsed from the reply.
+- `src/chaos/agent.py` — the agent seam: `respond()` runs the tool loop (call model →
+  execute tool calls → feed results back) until the model answers without tool calls;
+  budget tracking and tracing plug in here later.
+- `src/chaos/tools/` — the tool registry: `__init__.py` owns the `Tool` record,
+  `schemas()`, `execute()`, and path confinement (`resolve_path`); `filetools.py`
+  holds the file tools (`read_file`, `list_files`, `edit_file`, `write_file`).
+  New tool families (e.g. shell) add a module here plus one import in `__init__.py`.
 - `tests/` — unittest suite; HTTP is mocked, no API key needed.
 
 ## Commands
