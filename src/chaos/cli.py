@@ -93,6 +93,8 @@ def repl(console, theme, cfg, ref, config_path=None):
             messages.pop()
             ui.print_error(console, theme, exc)
             continue
+        for event in reply.events:
+            ui.print_tool(console, theme, event)
         ui.print_thinking(console, theme, reply.reasoning)
         ui.print_reply(console, theme, reply.text)
 

@@ -30,6 +30,7 @@ def _hex_color(style_str, default):
 _RENDERERS = {
     "user": ui.render_user,
     "thinking": ui.render_thinking,
+    "tool": ui.render_tool,
     "reply": ui.render_reply,
     "info": ui.render_info,
     "error": ui.render_error,
@@ -292,6 +293,8 @@ class ChaosApp(App):
 
     def _show_reply(self, reply):
         self._set_spinner(False)
+        for event in reply.events:
+            self._log("tool", event)
         if reply.reasoning:
             self._log("thinking", reply.reasoning)
         self._log("reply", reply.text)

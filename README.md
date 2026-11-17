@@ -59,7 +59,26 @@ Commands: `/help` (lists them all), `/exit` (or ctrl+q), `/clear`,
 whole app live and **saves the choice** to `~/.chaos/config.json` (`theme_name`),
 so the app reopens with your theme; `/theme ocean` also works directly. When
 stdin is piped it falls back to a plain print loop; `chaos "prompt"` stays
-one-shot and pipe-friendly.
+one-shot and pipe-friendly (one-shot prints only the final reply, no tool output).
+
+## Tools (file editing)
+
+The agent can read and edit your code through function tools, shown in the chat
+as `⚒ <tool> <path>` lines with a unified diff for every change:
+
+- `read_file(path, offset?, limit?)` — read a UTF-8 text file (optional line window)
+- `list_files(path?, pattern?)` — list files under a directory, glob-filtered
+- `edit_file(path, old_str, new_str)` — exact search/replace; `old_str` must match
+  exactly once, otherwise the edit is refused and the model re-reads the file
+- `write_file(path, content, overwrite?)` — create a file; overwriting an existing
+  file requires `overwrite: true`
+
+Safety: all tool paths are resolved against the **workspace root** (the directory
+you launched `chaos` from, or `workspace_root` in the config) and anything outside
+it — including symlink escapes and absolute paths — is refused. Binary files and
+oversized files/results are capped. Optional config keys (all have defaults):
+`"workspace_root"`, `"max_file_bytes"` (200000), `"max_result_bytes"` (20000),
+`"max_tool_rounds"` (10, the tool-loop iteration cap per turn).
 
 ## Development
 
