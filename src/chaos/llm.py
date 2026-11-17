@@ -43,6 +43,8 @@ def chat(*, base_url, api_key, model, messages, tools=None, timeout=120):
 
 
 def _tool_calls(message):
+    """Normalize tool_calls to the canonical spec shape ({id, type, function: {name, arguments}}),
+    so echoing them back into the history is accepted by strictly-validating APIs."""
     calls = message.get("tool_calls") or []
     parsed = []
     for call in calls:
@@ -55,8 +57,8 @@ def _tool_calls(message):
         parsed.append(
             {
                 "id": call.get("id") or "",
-                "name": function.get("name") or "",
-                "arguments": arguments,
+                "type": "function",
+                "function": {"name": function.get("name") or "", "arguments": arguments},
             }
         )
     return tuple(parsed)

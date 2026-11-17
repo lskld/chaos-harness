@@ -40,8 +40,13 @@ class ToolLoopTest(unittest.TestCase):
             Path(d, "f.txt").write_text("hello\n", encoding="utf-8")
             messages = [{"role": "user", "content": "change f.txt"}]
             edit_args = json.dumps({"path": "f.txt", "old_str": "hello", "new_str": "bye"})
+            edit_call = {
+                "id": "1",
+                "type": "function",
+                "function": {"name": "edit_file", "arguments": edit_args},
+            }
             calls = [
-                Reply(text="", tool_calls=({"id": "1", "name": "edit_file", "arguments": edit_args},)),
+                Reply(text="", tool_calls=(edit_call,)),
                 Reply(text="done"),
             ]
             with patch("chaos.agent.chat", side_effect=calls) as chat_mock:
@@ -52,6 +57,11 @@ class ToolLoopTest(unittest.TestCase):
                 [m["role"] for m in messages],
                 ["system", "user", "assistant", "tool", "assistant"],
             )
+            echoed = messages[2]["tool_calls"][0]
+            self.assertEqual(set(echoed), {"id", "type", "function"})
+            self.assertEqual(echoed["type"], "function")
+            self.assertEqual(echoed["function"]["name"], "edit_file")
+            self.assertEqual(echoed["function"]["arguments"], edit_args)
             self.assertEqual(messages[3]["tool_call_id"], "1")
             self.assertEqual(messages[3]["name"], "edit_file")
             self.assertIn('"ok": true', messages[3]["content"])
@@ -69,7 +79,14 @@ class ToolLoopTest(unittest.TestCase):
                 Reply(
                     text="",
                     tool_calls=(
-                        {"id": "1", "name": "edit_file", "arguments": json.dumps({"path": "gone.txt", "old_str": "a", "new_str": "b"})},
+                        {
+                            "id": "1",
+                            "type": "function",
+                            "function": {
+                                "name": "edit_file",
+                                "arguments": json.dumps({"path": "gone.txt", "old_str": "a", "new_str": "b"}),
+                            },
+                        },
                     ),
                 ),
                 Reply(text="could not"),
@@ -85,7 +102,11 @@ class ToolLoopTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             cfg = {**CFG, "workspace_root": d, "max_tool_rounds": 2}
             messages = [{"role": "user", "content": "go"}]
-            call = {"id": "1", "name": "list_files", "arguments": "{}"}
+            call = {
+                "id": "1",
+                "type": "function",
+                "function": {"name": "list_files", "arguments": "{}"},
+            }
             with patch("chaos.agent.chat", return_value=Reply(text="", tool_calls=(call,))) as chat_mock:
                 reply = respond(cfg, "p/m", messages)
             self.assertIn("stopped after 2 tool rounds", reply.text)

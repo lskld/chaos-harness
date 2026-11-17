@@ -58,15 +58,17 @@ def respond(cfg, ref, messages):
             }
         )
         for call in reply.tool_calls:
-            result = tools_mod.execute(call["name"], call["arguments"], ctx)
+            name = call["function"]["name"]
+            arguments = call["function"]["arguments"]
+            result = tools_mod.execute(name, arguments, ctx)
             try:
                 parsed = json.loads(result)
             except json.JSONDecodeError:
                 parsed = {"ok": False, "error": "unparseable tool result"}
             events.append(
                 {
-                    "tool": call["name"],
-                    "arguments": _parsed_arguments(call["arguments"]),
+                    "tool": name,
+                    "arguments": _parsed_arguments(arguments),
                     "result": parsed,
                 }
             )
@@ -74,7 +76,7 @@ def respond(cfg, ref, messages):
                 {
                     "role": "tool",
                     "tool_call_id": call["id"],
-                    "name": call["name"],
+                    "name": name,
                     "content": result,
                 }
             )

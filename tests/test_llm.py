@@ -114,7 +114,7 @@ class ChatTest(unittest.TestCase):
             chat(base_url="https://api.example.com/v1", api_key="k", model="m", messages=[])
         self.assertNotIn("tools", post.call_args.kwargs["json"])
 
-    def test_tool_calls_are_parsed(self):
+    def test_tool_calls_are_parsed_into_canonical_shape(self):
         message = {
             "content": None,
             "tool_calls": [
@@ -130,7 +130,13 @@ class ChatTest(unittest.TestCase):
             reply = chat(base_url="https://api.example.com/v1", api_key="k", model="m", messages=[])
         self.assertEqual(
             reply.tool_calls,
-            ({"id": "call_1", "name": "edit_file", "arguments": '{"path": "a.py"}'},),
+            (
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "edit_file", "arguments": '{"path": "a.py"}'},
+                },
+            ),
         )
         self.assertEqual(reply.text, "")
 
@@ -144,7 +150,7 @@ class ChatTest(unittest.TestCase):
         with patch("chaos.llm.requests.post") as post:
             post.return_value = fake_response(payload={"choices": [{"message": message}]})
             reply = chat(base_url="https://api.example.com/v1", api_key="k", model="m", messages=[])
-        self.assertEqual(reply.tool_calls[0]["arguments"], '{"path": "a.py"}')
+        self.assertEqual(reply.tool_calls[0]["function"]["arguments"], '{"path": "a.py"}')
 
     def test_no_tool_calls_by_default(self):
         with patch("chaos.llm.requests.post") as post:
