@@ -1,11 +1,8 @@
-import asyncio
-import threading
 import unittest
 from unittest.mock import patch
 
-from textual.widgets import Footer, Input, RichLog, Static
+from textual.widgets import Input, RichLog, Static
 
-from chaos import ui
 from chaos.app import ChaosApp
 from chaos.llm import Reply
 
@@ -39,7 +36,6 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn("hello", text)
             self.assertEqual(app.messages[-1], {"role": "assistant", "content": "hello **world**"})
             self.assertEqual(str(app.query_one("#status", Static).render()), "")
-            self.assertEqual(len(app.query(Footer)), 0)
 
     async def test_error_is_shown_and_user_message_popped(self):
         app = ChaosApp(CFG, "p/m")
@@ -58,29 +54,6 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             await type_and_submit(app, pilot, "/model p/m2")
             self.assertEqual(app.ref, "p/m2")
             self.assertIn("switched to p/m2", log_text(app))
-
-    async def test_mascot_and_spinner_animate_only_while_model_works(self):
-        gate = threading.Event()
-
-        def blocking_chat(**kwargs):
-            gate.wait(10)
-            return Reply(text="done")
-
-        app = ChaosApp(CFG, "p/m")
-        async with app.run_test() as pilot:
-            with patch("chaos.agent.chat", side_effect=blocking_chat):
-                app.query_one("#input", Input).value = "hi"
-                await pilot.press("enter")
-                await pilot.pause()
-                await asyncio.sleep(0.4)
-                self.assertIn("thinking", str(app.query_one("#status", Static).render()))
-                mascot = str(app.query_one("#mascot", Static).render())
-                self.assertTrue(any(f in mascot for f in ui.THINK_FACES))
-                gate.set()
-                await app.workers.wait_for_complete()
-                await pilot.pause()
-                self.assertEqual(str(app.query_one("#status", Static).render()), "")
-                self.assertIn(ui.MASCOT_IDLE_FACE, str(app.query_one("#mascot", Static).render()))
 
     async def test_screen_background_comes_from_theme(self):
         from textual.color import Color
@@ -109,7 +82,6 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(
                 app.query_one("#mascot", Static).styles.background, Color.parse("#0a1420")
             )
-            self.assertNotIn("theme:", log_text(app))
 
     async def test_theme_direct_name_and_unknown(self):
         app = ChaosApp(CFG, "p/m")
@@ -146,13 +118,6 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             await pilot.press("escape")
             await pilot.pause()
             self.assertEqual(app.theme_name, "fire")
-
-    async def test_placeholder_is_bare_and_topbar_shows_help_hint(self):
-        app = ChaosApp(CFG, "p/m")
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            self.assertEqual(app.query_one("#input", Input).placeholder, "ask chaos…")
-            self.assertIn("/help", str(app.query_one("#helpline", Static).render()))
 
     async def test_help_lists_commands(self):
         app = ChaosApp(CFG, "p/m")

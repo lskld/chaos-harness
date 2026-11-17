@@ -7,8 +7,11 @@ tool calling yet.
 ## Layout (src layout)
 
 - `src/chaos/cli.py` — entry point and composition root: arg parsing, one-shot mode,
-  dispatch to the full-screen app on a TTY (plain print loop when piped). No HTTP,
-  config-file IO, or rendering here.
+  dispatch to the full-screen app on a TTY (plain print loop when piped). No HTTP or
+  rendering here.
+- `src/chaos/commands.py` — the shared slash commands: one `HELP_LINES` list plus
+  `split`/`model_command`/`theme_command` helpers, used by both the app and the piped
+  loop so the two can't drift apart.
 - `src/chaos/app.py` — the full-screen Textual app: top bar with the current model
   and the animated fireball mascot (top-right, bobs + changes faces while thinking,
   spinner line below it), scrollable log, input docked at the bottom; the agent call

@@ -10,8 +10,8 @@ from textual.screen import ModalScreen
 from textual.widgets import Input, RichLog, SelectionList, Static
 from textual.widgets.selection_list import Selection
 
+from . import commands
 from . import config as config_mod
-from . import themes as themes_mod
 from . import ui
 from .agent import respond
 
@@ -25,6 +25,15 @@ def _hex_color(style_str, default):
         return hex_value if hex_value.startswith("#") else "#" + hex_value
     except Exception:
         return default
+
+
+_RENDERERS = {
+    "user": ui.render_user,
+    "thinking": ui.render_thinking,
+    "reply": ui.render_reply,
+    "info": ui.render_info,
+    "error": ui.render_error,
+}
 
 
 class ThemePicker(ModalScreen):
@@ -56,9 +65,6 @@ class ThemePicker(ModalScreen):
         picker.styles.border = ("round", self._accent)
         self.query_one("#hint").styles.color = self._accent
         self.query_one("#list", SelectionList).focus()
-
-    def on_selection_list_option_selected(self, event: SelectionList.OptionSelected):
-        self.dismiss(event.option.value)
 
     def action_pick(self):
         selection_list = self.query_one("#list", SelectionList)
@@ -96,10 +102,10 @@ class ChaosApp(App):
     def compose(self) -> ComposeResult:
         with Horizontal(id="topbar"):
             with Vertical(id="titles"):
-                yield Static(Text("CHAOS", style=self.ui_theme["banner"]), id="name")
+                yield Static(Text(ui.NAME, style=self.ui_theme["banner"]), id="name")
                 yield Static(f"model: {self.ref}", id="model")
-                yield Static("hackathon agent harness · made by Team Chaos", id="tagline")
-                yield Static("type /help for the list of commands", id="helpline")
+                yield Static(ui.TAGLINE, id="tagline")
+                yield Static(ui.HELP_HINT, id="helpline")
             with Vertical(id="right"):
                 yield Static(ui.mascot_text(theme=self.ui_theme), id="mascot")
                 yield Static("", id="status")
@@ -114,16 +120,15 @@ class ChaosApp(App):
     def _apply_theme(self):
         theme = self.ui_theme
         bg = _hex_color(theme["background"], "#1a0d0a")
+        info = _hex_color(theme["info"], "#888888")
         self.screen.styles.background = bg
         for widget in self.query("#topbar, #topbar *, #log, #input"):
             widget.styles.background = bg
         self.query_one("#name").styles.color = _hex_color(theme["banner"], "#ffaf00")
-        self.query_one("#model").styles.color = _hex_color(theme["info"], "#888888")
-        self.query_one("#tagline").styles.color = _hex_color(theme["info"], "#888888")
-        self.query_one("#helpline").styles.color = _hex_color(theme["info"], "#888888")
+        for widget in self.query("#model, #tagline, #helpline, #status"):
+            widget.styles.color = info
         self.query_one("#input").styles.border = ("solid", _hex_color(theme["prompt"], "#00d7ff"))
-        self.query_one("#status").styles.color = _hex_color(theme["info"], "#888888")
-        self.query_one("#mascot", Static).update(ui.mascot_text(theme=self.ui_theme))
+        self.query_one("#mascot", Static).update(ui.mascot_text(theme=theme))
 
     def _log(self, kind, payload):
         self._log_items.append((kind, payload))
@@ -132,15 +137,7 @@ class ChaosApp(App):
             self.log_widget.write(rendered)
 
     def _render_item(self, kind, payload):
-        theme = self.ui_theme
-        renderers = {
-            "user": lambda: ui.render_user(theme, payload),
-            "thinking": lambda: ui.render_thinking(theme, payload),
-            "reply": lambda: ui.render_reply(theme, payload),
-            "info": lambda: ui.render_info(theme, payload),
-            "error": lambda: ui.render_error(theme, payload),
-        }
-        return renderers[kind]()
+        return _RENDERERS[kind](self.ui_theme, payload)
 
     def _rebuild_log(self):
         self.log_widget.clear()
@@ -181,72 +178,56 @@ class ChaosApp(App):
         event.input.clear()
         if not text:
             return
-        if text in ("/exit", "/quit"):
-            self.exit()
-            return
-        if text == "/clear":
-            self.messages.clear()
-            self._log_items.clear()
-            self.log_widget.clear()
-            return
-        if text == "/help":
-            for line in (
-                "/help — show this list",
-                "/model [provider/model] — list or switch model",
-                "/theme [name] — pick a color theme",
-                "/clear — clear the chat",
-                "/exit — quit (ctrl+q works too)",
-            ):
-                self._log("info", line)
-            return
-        if text == "/model" or text.startswith("/model "):
-            arg = text.split(maxsplit=1)[1] if " " in text else ""
-            self._model_command(arg)
-            return
-        if text == "/theme" or text.startswith("/theme "):
-            arg = text.split(maxsplit=1)[1] if " " in text else ""
-            self._theme_command(arg)
+        name, arg = commands.split(text)
+        if name in commands.COMMANDS:
+            self._dispatch_command(name, arg)
             return
         self.messages.append({"role": "user", "content": text})
         self._log("user", text)
         self._set_spinner(True)
         self._ask()
 
-    def _model_command(self, arg):
-        if not arg:
-            for m in config_mod.list_models(self.cfg):
-                marker = "*" if m == self.ref else " "
-                self._log("info", f"{marker} {m}")
-            return
-        try:
-            config_mod.resolve(self.cfg, arg)
-        except config_mod.ConfigError as exc:
-            self._log("error", exc)
-            return
-        self.ref = arg
-        self.query_one("#model", Static).update(f"model: {arg}")
-        self._log("info", f"switched to {arg}")
+    def _dispatch_command(self, name, arg):
+        if name in ("/exit", "/quit"):
+            self.exit()
+        elif name == "/help":
+            for line in commands.HELP_LINES:
+                self._log("info", line)
+        elif name == "/clear":
+            self.messages.clear()
+            self._log_items.clear()
+            self.log_widget.clear()
+        elif name == "/model":
+            current = self.ref
+            self.ref, out = commands.model_command(self.cfg, arg, self.ref)
+            for kind, payload in out:
+                self._log(kind, payload)
+            if self.ref != current:
+                self.query_one("#model", Static).update(f"model: {self.ref}")
+        elif name == "/theme":
+            self._theme_command(arg)
 
     def _theme_command(self, arg):
-        if arg:
-            self._switch_theme(arg)
+        if not arg:
+            theme = self.ui_theme
+            self.push_screen(
+                ThemePicker(
+                    self.theme_name,
+                    config_mod.theme_names(),
+                    _hex_color(theme["background"], "#1a0d0a"),
+                    _hex_color(theme["prompt"], "#ff87a2"),
+                ),
+                callback=self._switch_theme,
+            )
             return
-        theme = self.ui_theme
-        self.push_screen(
-            ThemePicker(
-                self.theme_name,
-                config_mod.theme_names(),
-                _hex_color(theme["background"], "#1a0d0a"),
-                _hex_color(theme["prompt"], "#ff87a2"),
-            ),
-            callback=self._switch_theme,
-        )
+        new_name, out = commands.theme_command(arg, self.theme_name)
+        for kind, payload in out:
+            self._log(kind, payload)
+        if new_name:
+            self._switch_theme(new_name)
 
     def _switch_theme(self, name):
         if not name:
-            return
-        if name not in themes_mod.THEMES:
-            self._log("error", f"unknown theme {name!r}; available: {', '.join(config_mod.theme_names())}")
             return
         self.theme_name = name
         self.ui_theme = config_mod.theme(self.cfg, name)
