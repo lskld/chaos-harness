@@ -45,15 +45,91 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn("error: boom", log_text(app))
             self.assertEqual(app.messages, [])
 
-    async def test_model_command_lists_and_switches(self):
+    async def test_model_command_without_arg_opens_picker(self):
+        from chaos.app import ModelPicker
+
         app = ChaosApp(CFG, "p/m")
         async with app.run_test() as pilot:
             await type_and_submit(app, pilot, "/model")
-            self.assertIn("* p/m", log_text(app))
-            self.assertIn("p/m2", log_text(app))
+            self.assertIsInstance(app.screen, ModelPicker)
+
+    async def test_model_command_switches_directly_and_rejects_unknown(self):
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
             await type_and_submit(app, pilot, "/model p/m2")
             self.assertEqual(app.ref, "p/m2")
+            self.assertEqual(str(app.query_one("#model", Static).render()), "model: p/m2")
             self.assertIn("switched to p/m2", log_text(app))
+            await type_and_submit(app, pilot, "/model nope/x")
+            self.assertEqual(app.ref, "p/m2")
+            self.assertIn("unknown provider", log_text(app))
+
+    async def test_model_picker_modal_switches_with_arrow_keys(self):
+        from chaos.app import ModelPicker
+
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            await type_and_submit(app, pilot, "/model")
+            self.assertIsInstance(app.screen, ModelPicker)
+            await pilot.press("down", "enter")
+            await pilot.pause()
+            self.assertEqual(app.ref, "p/m2")
+            self.assertEqual(str(app.query_one("#model", Static).render()), "model: p/m2")
+            self.assertIn("switched to p/m2", log_text(app))
+
+    async def test_model_picker_escape_keeps_model(self):
+        from chaos.app import ModelPicker
+
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            await type_and_submit(app, pilot, "/model")
+            self.assertIsInstance(app.screen, ModelPicker)
+            await pilot.press("escape")
+            await pilot.pause()
+            self.assertEqual(app.ref, "p/m")
+
+    async def test_model_picker_with_no_models_logs_error(self):
+        from chaos.app import ModelPicker
+
+        cfg = {"default_model": "p/m", "providers": {"p": {"base_url": "u", "api_key": "k", "models": []}}}
+        app = ChaosApp(cfg, "p/m")
+        async with app.run_test() as pilot:
+            await type_and_submit(app, pilot, "/model")
+            self.assertNotIsInstance(app.screen, ModelPicker)
+            self.assertIn("no models configured", log_text(app))
+
+    async def test_model_choice_is_saved_to_config_and_used_on_restart(self):
+        import json
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            path.write_text(json.dumps(CFG), encoding="utf-8")
+            app = ChaosApp(CFG, "p/m", config_path=str(path))
+            async with app.run_test() as pilot:
+                await type_and_submit(app, pilot, "/model")
+                await pilot.press("down", "enter")
+                await pilot.pause()
+                self.assertEqual(app.ref, "p/m2")
+            saved = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(saved["default_model"], "p/m2")
+            restarted = ChaosApp(saved, saved.get("default_model"), config_path=str(path))
+            self.assertEqual(restarted.ref, "p/m2")
+
+    async def test_model_direct_switch_is_saved_to_config(self):
+        import json
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            path.write_text(json.dumps(CFG), encoding="utf-8")
+            app = ChaosApp(CFG, "p/m", config_path=str(path))
+            async with app.run_test() as pilot:
+                await type_and_submit(app, pilot, "/model p/m2")
+            saved = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(saved["default_model"], "p/m2")
 
     async def test_screen_background_comes_from_theme(self):
         from textual.color import Color

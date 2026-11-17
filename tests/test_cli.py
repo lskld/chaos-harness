@@ -45,6 +45,16 @@ class ReplCommandTest(unittest.TestCase):
             saved = json.loads(path.read_text(encoding="utf-8"))
             self.assertEqual(saved["theme_name"], "mono")
 
+    def test_model_command_switch_is_persisted(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            path.write_text(json.dumps(CFG), encoding="utf-8")
+            cfg = config_mod.load(path)
+            out = run_repl(["/model p/m2", "/exit"], cfg, path)
+            self.assertIn("switched to p/m2", out)
+            saved = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(saved["default_model"], "p/m2")
+
     def test_unknown_theme_reports_error(self):
         with tempfile.TemporaryDirectory() as d:
             path = Path(d) / "config.json"
