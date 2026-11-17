@@ -1,4 +1,6 @@
+import os
 from itertools import cycle
+from pathlib import Path
 
 from rich.style import Style
 from rich.text import Text
@@ -176,7 +178,9 @@ class ChaosApp(App):
         background: transparent;
     }
     .process-log { height: auto; max-height: 20; padding: 0 0 0 2; }
-    #input { dock: bottom; margin: 0 2 1 2; }
+    #bottom { dock: bottom; height: auto; }
+    #input { margin: 0 2; }
+    #cwd { height: 1; padding: 0 2; }
     """
 
     BINDINGS = [("ctrl+q", "exit_app", "Quit")]
@@ -189,11 +193,21 @@ class ChaosApp(App):
         self.theme_name = cfg.get("theme_name") or config_mod.DEFAULT_THEME_NAME
         self.ui_theme = config_mod.theme(cfg, self.theme_name)
         self.messages = []
+        self.workspace_root = Path(cfg.get("workspace_root") or os.getcwd()).resolve()
         self._log_items = []
         self._spinner_on = False
         self._spinner_frames = cycle("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
         self._mascot_up = False
         self._face_index = 0
+
+    def _cwd_text(self):
+        root = str(self.workspace_root)
+        home = os.path.expanduser("~")
+        if root == home:
+            return "~"
+        if root.startswith(home + os.sep):
+            return "~" + root[len(home):]
+        return root
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="topbar"):
@@ -206,7 +220,9 @@ class ChaosApp(App):
                 yield Static(ui.mascot_text(theme=self.ui_theme), id="mascot")
                 yield Static("", id="status")
         yield VerticalScroll(id="log")
-        yield Input(placeholder="ask chaos…", id="input")
+        with Vertical(id="bottom"):
+            yield Input(placeholder="ask chaos…", id="input")
+            yield Static(Text(self._cwd_text()), id="cwd")
 
     def on_mount(self):
         self._apply_theme()
@@ -218,10 +234,10 @@ class ChaosApp(App):
         bg = _hex_color(theme["background"], "#1a0d0a")
         info = _hex_color(theme["info"], "#888888")
         self.screen.styles.background = bg
-        for widget in self.query("#topbar, #topbar *, #log, #log *, #input"):
+        for widget in self.query("#topbar, #topbar *, #log, #log *, #bottom, #bottom *"):
             widget.styles.background = bg
         self.query_one("#name").styles.color = _hex_color(theme["banner"], "#ffaf00")
-        for widget in self.query("#model, #tagline, #helpline, #status"):
+        for widget in self.query("#model, #tagline, #helpline, #status, #cwd"):
             widget.styles.color = info
         self.query_one("#input").styles.border = ("solid", _hex_color(theme["prompt"], "#00d7ff"))
         self.query_one("#mascot", Static).update(ui.mascot_text(theme=theme))

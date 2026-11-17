@@ -393,6 +393,23 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             for cmd in ("/help", "/model", "/theme", "/clear", "/exit"):
                 self.assertIn(cmd, text)
 
+    async def test_bottom_bar_shows_the_workspace_directory_below_the_input(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg = {**CFG, "workspace_root": d}
+            app = ChaosApp(cfg, "p/m")
+            async with app.run_test(size=(80, 24)) as pilot:
+                await pilot.pause()
+                cwd = app.query_one("#cwd", Static)
+                self.assertIn(str(Path(d).resolve()), str(cwd.content))
+                self.assertGreater(cwd.region.y, app.query_one("#input", Input).region.y)
+
+    def test_cwd_text_compresses_the_home_directory(self):
+        app = ChaosApp(CFG, "p/m")
+        app.workspace_root = Path.home() / "proj"
+        self.assertEqual(app._cwd_text(), "~/proj")
+        app.workspace_root = Path("/tmp/elsewhere")
+        self.assertEqual(app._cwd_text(), "/tmp/elsewhere")
+
     async def test_clear_empties_log(self):
         app = ChaosApp(CFG, "p/m")
         async with app.run_test() as pilot:
