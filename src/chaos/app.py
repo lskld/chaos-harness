@@ -36,26 +36,27 @@ _RENDERERS = {
 }
 
 
-class ThemePicker(ModalScreen):
+class ListPicker(ModalScreen):
     CSS = """
-    ThemePicker { align: center middle; }
     #picker { width: 42; height: auto; max-height: 14; border: round; padding: 1 2; }
     """
 
     BINDINGS = [("escape", "dismiss"), Binding("enter", "pick", "Pick", priority=True)]
 
-    def __init__(self, current, names, bg, accent):
+    def __init__(self, current, options, bg, accent, hint):
         super().__init__()
+        self.styles.align = ("center", "middle")
         self._current = current
-        self._names = names
+        self._options = options
         self._bg = bg
         self._accent = accent
+        self._hint = hint
 
     def compose(self) -> ComposeResult:
         with Vertical(id="picker"):
-            yield Static("pick a theme — ↑/↓ + enter, esc to close", id="hint")
+            yield Static(self._hint, id="hint")
             yield SelectionList(
-                *[Selection(name, name, name == self._current) for name in self._names],
+                *[Selection(option, option, option == self._current) for option in self._options],
                 id="list",
             )
 
@@ -70,6 +71,16 @@ class ThemePicker(ModalScreen):
         selection_list = self.query_one("#list", SelectionList)
         if selection_list.highlighted is not None:
             self.dismiss(selection_list.options[selection_list.highlighted].value)
+
+
+class ThemePicker(ListPicker):
+    def __init__(self, current, names, bg, accent):
+        super().__init__(current, names, bg, accent, "pick a theme — ↑/↓ + enter, esc to close")
+
+
+class ModelPicker(ListPicker):
+    def __init__(self, current, models, bg, accent):
+        super().__init__(current, models, bg, accent, "pick a model — ↑/↓ + enter, esc to close")
 
 
 class ChaosApp(App):
@@ -198,14 +209,44 @@ class ChaosApp(App):
             self._log_items.clear()
             self.log_widget.clear()
         elif name == "/model":
-            current = self.ref
-            self.ref, out = commands.model_command(self.cfg, arg, self.ref)
-            for kind, payload in out:
-                self._log(kind, payload)
-            if self.ref != current:
-                self.query_one("#model", Static).update(f"model: {self.ref}")
+            self._model_command(arg)
         elif name == "/theme":
             self._theme_command(arg)
+
+    def _model_command(self, arg):
+        if arg:
+            self._switch_model(arg)
+            return
+        models = config_mod.list_models(self.cfg)
+        if not models:
+            self._log("error", "no models configured — add some under providers in config.json")
+            return
+        theme = self.ui_theme
+        self.push_screen(
+            ModelPicker(
+                self.ref,
+                models,
+                _hex_color(theme["background"], "#1a0d0a"),
+                _hex_color(theme["prompt"], "#ff87a2"),
+            ),
+            callback=self._switch_model,
+        )
+
+    def _switch_model(self, ref):
+        if not ref:
+            return
+        current = self.ref
+        self.ref, out = commands.model_command(self.cfg, ref, self.ref)
+        for kind, payload in out:
+            self._log(kind, payload)
+        if self.ref != current:
+            self.query_one("#model", Static).update(f"model: {self.ref}")
+            if self.config_path is not None:
+                self.cfg["default_model"] = self.ref
+                try:
+                    config_mod.save(self.config_path, self.cfg)
+                except OSError as exc:
+                    self._log("error", f"could not save model to config: {exc}")
 
     def _theme_command(self, arg):
         if not arg:

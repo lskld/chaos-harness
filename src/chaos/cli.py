@@ -58,8 +58,16 @@ def repl(console, theme, cfg, ref, config_path=None):
                 ui.print_info(console, theme, "history cleared")
                 continue
             if name == "/model":
-                ref, out = commands.model_command(cfg, arg, ref)
+                new_ref, out = commands.model_command(cfg, arg, ref)
                 _print_out(console, theme, out)
+                if new_ref != ref:
+                    ref = new_ref
+                    if config_path is not None:
+                        cfg["default_model"] = ref
+                        try:
+                            config_mod.save(config_path, cfg)
+                        except OSError as exc:
+                            ui.print_error(console, theme, f"could not save model to config: {exc}")
                 continue
             if name == "/theme":
                 new_name, out = commands.theme_command(arg, cfg.get("theme_name"))

@@ -4,7 +4,7 @@ COMMANDS = ("/exit", "/quit", "/help", "/clear", "/model", "/theme")
 
 HELP_LINES = (
     "/help — show this list",
-    "/model [provider/model] — list or switch model",
+    "/model [provider/model] — pick or switch model",
     "/theme [name] — pick a color theme",
     "/clear — clear the chat",
     "/exit — quit",
