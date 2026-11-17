@@ -95,6 +95,32 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
                 self.assertIn("done", text)
                 self.assertLess(text.index("edit_file a.py"), text.index("done"))
 
+    async def test_tool_call_and_result_render_as_a_single_block(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg = {**CFG, "workspace_root": d}
+            Path(d, "a.py").write_text("x\n", encoding="utf-8")
+            call = {
+                "id": "1",
+                "type": "function",
+                "function": {
+                    "name": "edit_file",
+                    "arguments": json.dumps({"path": "a.py", "old_str": "x", "new_str": "y"}),
+                },
+            }
+            app = ChaosApp(cfg, "p/m")
+            async with app.run_test() as pilot:
+                with patch(
+                    "chaos.agent.chat_stream",
+                    side_effect=[Reply(text="", tool_calls=(call,)), Reply(text="done")],
+                ):
+                    await type_and_submit(app, pilot, "hi")
+                process = app.query_one(ThoughtProcess)
+                blocks = [_renderable_text(w.content) for w in process.query(".process-log Static")]
+                headers = [b for b in blocks if "edit_file a.py" in b]
+                self.assertEqual(len(headers), 1)
+                self.assertNotIn("…", headers[0])
+                self.assertIn("+y", headers[0])
+
     async def test_thought_process_dropdown_is_collapsed_by_default_and_expandable(self):
         app = ChaosApp(CFG, "p/m")
         async with app.run_test() as pilot:

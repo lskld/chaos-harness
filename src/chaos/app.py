@@ -98,6 +98,7 @@ class ThoughtProcess(Collapsible):
         self._log = log
         self._live = {}
         self._pending = []
+        self._pending_tools = []
         for event in events:
             self._write_event(theme, event)
 
@@ -113,14 +114,23 @@ class ThoughtProcess(Collapsible):
         self._write_event(theme, event)
 
     def _write_event(self, theme, event):
-        if event.get("type") == "delta":
+        kind = event.get("type")
+        if kind == "delta":
             self._append_delta(theme, event.get("field", ""), event.get("text", ""))
             return
-        if event.get("type") == "reply":
+        if kind == "reply":
             block = self._live.pop("content", None)
             if block is not None:
                 self._discard_block(block)
         self._live = {}
+        if kind == "tool_call":
+            block = Static(ui.render_tool_call(theme, event))
+            self._pending_tools.append(block)
+            self._mount_block(block)
+            return
+        if kind == "tool_result" and self._pending_tools:
+            self._pending_tools.pop(0).update(ui.render_tool(theme, event))
+            return
         rendered = ui.render_event(theme, event)
         if rendered is not None:
             self._mount_block(rendered)
