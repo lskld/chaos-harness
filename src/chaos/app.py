@@ -5,9 +5,9 @@ from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Input, RichLog, SelectionList, Static
+from textual.widgets import Collapsible, Input, RichLog, SelectionList, Static
 from textual.widgets.selection_list import Selection
 
 from . import commands
@@ -84,6 +84,28 @@ class ModelPicker(ListPicker):
         super().__init__(current, models, bg, accent, "pick a model — ↑/↓ + enter, esc to close")
 
 
+class ThoughtProcess(Collapsible):
+    """One turn's live event stream behind a collapsed 'thought process' dropdown."""
+
+    def __init__(self, theme, events):
+        inner = RichLog(classes="process-log", max_lines=400)
+        title = Text("thought process", style=theme["thinking"])
+        super().__init__(inner, title=title, collapsed=True, classes="process")
+        self.events = events
+        self._inner = inner
+        for event in events:
+            self._write_event(theme, event)
+
+    def add_event(self, theme, event):
+        self.events.append(event)
+        self._write_event(theme, event)
+
+    def _write_event(self, theme, event):
+        rendered = ui.render_event(theme, event)
+        if rendered is not None:
+            self._inner.write(rendered)
+
+
 class ChaosApp(App):
     CSS = """
     #topbar { dock: top; height: auto; padding: 1 2 0 2; }
@@ -92,6 +114,8 @@ class ChaosApp(App):
     #mascot { height: 6; width: 16; text-align: right; }
     #status { height: 1; width: 16; text-align: right; padding: 0 1; }
     #log { height: 1fr; padding: 0 2; }
+    .process { margin: 0 0 0 1; }
+    .process-log { height: auto; max-height: 20; padding: 0 0 0 2; }
     #input { dock: bottom; margin: 0 2 1 2; }
     """
 
@@ -121,7 +145,7 @@ class ChaosApp(App):
             with Vertical(id="right"):
                 yield Static(ui.mascot_text(theme=self.ui_theme), id="mascot")
                 yield Static("", id="status")
-        yield RichLog(id="log")
+        yield VerticalScroll(id="log")
         yield Input(placeholder="ask chaos…", id="input")
 
     def on_mount(self):
@@ -134,7 +158,7 @@ class ChaosApp(App):
         bg = _hex_color(theme["background"], "#1a0d0a")
         info = _hex_color(theme["info"], "#888888")
         self.screen.styles.background = bg
-        for widget in self.query("#topbar, #topbar *, #log, #input"):
+        for widget in self.query("#topbar, #topbar *, #log, #log *, #input"):
             widget.styles.background = bg
         self.query_one("#name").styles.color = _hex_color(theme["banner"], "#ffaf00")
         for widget in self.query("#model, #tagline, #helpline, #status"):
@@ -144,23 +168,31 @@ class ChaosApp(App):
 
     def _log(self, kind, payload):
         self._log_items.append((kind, payload))
-        rendered = self._render_item(kind, payload)
-        if rendered is not None:
-            self.log_widget.write(rendered)
+        return self._mount_item(kind, payload)
 
     def _render_item(self, kind, payload):
         return _RENDERERS[kind](self.ui_theme, payload)
 
-    def _rebuild_log(self):
-        self.log_widget.clear()
-        for kind, payload in self._log_items:
+    def _mount_item(self, kind, payload):
+        if kind == "process":
+            widget = ThoughtProcess(self.ui_theme, payload)
+            self.log_widget.mount(widget)
+        else:
             rendered = self._render_item(kind, payload)
-            if rendered is not None:
-                self.log_widget.write(rendered)
+            widget = Static(rendered) if rendered is not None else None
+            if widget is not None:
+                self.log_widget.mount(widget)
+        self.log_widget.scroll_end(animate=False)
+        return widget
+
+    def _rebuild_log(self):
+        self.log_widget.remove_children()
+        for kind, payload in self._log_items:
+            self._mount_item(kind, payload)
 
     @property
     def log_widget(self):
-        return self.query_one("#log", RichLog)
+        return self.query_one("#log", VerticalScroll)
 
     def action_exit_app(self):
         self.exit()
@@ -197,7 +229,8 @@ class ChaosApp(App):
         self.messages.append({"role": "user", "content": text})
         self._log("user", text)
         self._set_spinner(True)
-        self._ask()
+        process = self._log("process", [])
+        self._ask(process)
 
     def _dispatch_command(self, name, arg):
         if name in ("/exit", "/quit"):
@@ -208,7 +241,7 @@ class ChaosApp(App):
         elif name == "/clear":
             self.messages.clear()
             self._log_items.clear()
-            self.log_widget.clear()
+            self.log_widget.remove_children()
         elif name == "/model":
             self._model_command(arg)
         elif name == "/theme":
@@ -283,20 +316,23 @@ class ChaosApp(App):
                 self._log("error", f"could not save theme to config: {exc}")
 
     @work(thread=True)
-    def _ask(self):
+    def _ask(self, process):
+        def on_event(event):
+            self.call_from_thread(self._add_process_event, process, event)
+
         try:
-            reply = respond(self.cfg, self.ref, self.messages)
+            reply = respond(self.cfg, self.ref, self.messages, on_event=on_event)
         except Exception as exc:
             self.call_from_thread(self._fail, exc)
             return
         self.call_from_thread(self._show_reply, reply)
 
+    def _add_process_event(self, process, event):
+        process.add_event(self.ui_theme, event)
+        self.log_widget.scroll_end(animate=False)
+
     def _show_reply(self, reply):
         self._set_spinner(False)
-        for event in reply.events:
-            self._log("tool", event)
-        if reply.reasoning:
-            self._log("thinking", reply.reasoning)
         self._log("reply", reply.text)
 
     def _fail(self, exc):

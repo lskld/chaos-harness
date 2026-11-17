@@ -34,14 +34,24 @@ def _parsed_arguments(raw):
     return parsed if isinstance(parsed, dict) else raw
 
 
-def respond(cfg, ref, messages):
-    """One agent turn: run the tool loop until the model answers without tool calls."""
+def respond(cfg, ref, messages, on_event=None):
+    """One agent turn: run the tool loop until the model answers without tool calls.
+
+    If on_event is given, it is called with a typed event as each step happens:
+    {"type": "round", "reasoning": ...}, {"type": "tool_call", ...},
+    {"type": "tool_result", ...} and {"type": "reply", "text": ...}.
+    """
     base_url, api_key, model = config_mod.resolve(cfg, ref)
     ctx = _context(cfg)
     max_rounds = int(cfg.get("max_tool_rounds", tools_mod.DEFAULT_MAX_TOOL_ROUNDS))
     if not messages or messages[0].get("role") != "system":
         messages.insert(0, {"role": "system", "content": SYSTEM_PROMPT.format(root=ctx.root.resolve())})
     events = []
+
+    def emit(event):
+        if on_event is not None:
+            on_event(event)
+
     for _ in range(max_rounds):
         reply = chat(
             base_url=base_url,
@@ -50,8 +60,11 @@ def respond(cfg, ref, messages):
             messages=messages,
             tools=tools_mod.schemas(),
         )
+        if reply.reasoning:
+            emit({"type": "round", "reasoning": reply.reasoning})
         if not reply.tool_calls:
             messages.append({"role": "assistant", "content": reply.text})
+            emit({"type": "reply", "text": reply.text})
             return reply._replace(events=tuple(events))
         messages.append(
             {
@@ -63,18 +76,21 @@ def respond(cfg, ref, messages):
         for call in reply.tool_calls:
             name = call["function"]["name"]
             arguments = call["function"]["arguments"]
+            parsed_arguments = _parsed_arguments(arguments)
+            emit({"type": "tool_call", "tool": name, "arguments": parsed_arguments})
             result = tools_mod.execute(name, arguments, ctx)
             try:
                 parsed = json.loads(result)
             except json.JSONDecodeError:
                 parsed = {"ok": False, "error": "unparseable tool result"}
-            events.append(
-                {
-                    "tool": name,
-                    "arguments": _parsed_arguments(arguments),
-                    "result": parsed,
-                }
-            )
+            event = {
+                "type": "tool_result",
+                "tool": name,
+                "arguments": parsed_arguments,
+                "result": parsed,
+            }
+            events.append(event)
+            emit(event)
             messages.append(
                 {
                     "role": "tool",
@@ -85,4 +101,5 @@ def respond(cfg, ref, messages):
             )
     limit_text = f"stopped after {max_rounds} tool rounds — ask me to continue"
     messages.append({"role": "assistant", "content": limit_text})
+    emit({"type": "reply", "text": limit_text})
     return Reply(text=limit_text, events=tuple(events))

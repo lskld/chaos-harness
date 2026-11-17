@@ -1,9 +1,15 @@
+import json
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
+from rich.console import Console
+from textual.containers import VerticalScroll
 from textual.widgets import Input, RichLog, Static
 
-from chaos.app import ChaosApp
+from chaos import ui
+from chaos.app import ChaosApp, ThoughtProcess
 from chaos.llm import Reply
 
 CFG = {
@@ -11,9 +17,26 @@ CFG = {
     "providers": {"p": {"base_url": "https://x/v1", "api_key": "k", "models": ["m", "m2"]}},
 }
 
+_console = Console(width=100)
+
+
+def _renderable_text(renderable):
+    with _console.capture() as capture:
+        _console.print(renderable)
+    return capture.get()
+
 
 def log_text(app):
-    return "\n".join(strip.text for strip in app.query_one("#log", RichLog).lines)
+    parts = []
+    for child in app.query_one("#log", VerticalScroll).children:
+        if isinstance(child, ThoughtProcess):
+            for event in child.events:
+                rendered = ui.render_event(app.ui_theme, event)
+                if rendered is not None:
+                    parts.append(_renderable_text(rendered))
+        elif isinstance(child, Static):
+            parts.append(_renderable_text(child.content))
+    return "\n".join(parts)
 
 
 async def type_and_submit(app, pilot, text):
@@ -37,22 +60,53 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(app.messages[-1], {"role": "assistant", "content": "hello **world**"})
             self.assertEqual(str(app.query_one("#status", Static).render()), "")
 
-    async def test_tool_events_are_logged_before_the_reply(self):
-        event = {
-            "tool": "edit_file",
-            "arguments": {"path": "a.py", "old_str": "x", "new_str": "y"},
-            "result": {"ok": True, "diff": "-x\n+y\n"},
-        }
+    async def test_tool_events_stream_into_the_thought_process_before_the_reply(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg = {**CFG, "workspace_root": d}
+            Path(d, "a.py").write_text("x\n", encoding="utf-8")
+            call = {
+                "id": "1",
+                "type": "function",
+                "function": {
+                    "name": "edit_file",
+                    "arguments": json.dumps({"path": "a.py", "old_str": "x", "new_str": "y"}),
+                },
+            }
+            app = ChaosApp(cfg, "p/m")
+            async with app.run_test() as pilot:
+                with patch(
+                    "chaos.agent.chat",
+                    side_effect=[Reply(text="", tool_calls=(call,)), Reply(text="done")],
+                ):
+                    await type_and_submit(app, pilot, "hi")
+                text = log_text(app)
+                self.assertIn("edit_file a.py", text)
+                self.assertIn("+y", text)
+                self.assertIn("done", text)
+                self.assertLess(text.index("edit_file a.py"), text.index("done"))
+
+    async def test_thought_process_dropdown_is_collapsed_by_default_and_expandable(self):
         app = ChaosApp(CFG, "p/m")
         async with app.run_test() as pilot:
-            with patch(
-                "chaos.app.respond", return_value=Reply(text="done", events=(event,))
-            ):
+            with patch("chaos.agent.chat", return_value=Reply(text="hi there", reasoning="hmm")):
                 await type_and_submit(app, pilot, "hi")
-            text = log_text(app)
-            self.assertIn("edit_file a.py", text)
-            self.assertIn("+y", text)
-            self.assertIn("done", text)
+            process = app.query_one(ThoughtProcess)
+            self.assertTrue(process.collapsed)
+            self.assertIn("hmm", log_text(app))
+            process.collapsed = False
+            await pilot.pause()
+            self.assertFalse(process.collapsed)
+            inner_lines = "\n".join(strip.text for strip in process.query_one(RichLog).lines)
+            self.assertIn("hmm", inner_lines)
+
+    async def test_theme_switch_rebuilds_the_thought_process(self):
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            with patch("chaos.agent.chat", return_value=Reply(text="ok", reasoning="thinking hard")):
+                await type_and_submit(app, pilot, "hi")
+            await type_and_submit(app, pilot, "/theme mono")
+            self.assertEqual(len(app.query(ThoughtProcess)), 1)
+            self.assertIn("thinking hard", log_text(app))
 
     async def test_error_is_shown_and_user_message_popped(self):
         app = ChaosApp(CFG, "p/m")
