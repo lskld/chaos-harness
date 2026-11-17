@@ -70,10 +70,9 @@ def render_reply(theme, text):
     )
 
 
-def render_tool(theme, event):
+def tool_header(event):
     tool = str(event.get("tool", "?"))
     args = event.get("arguments") if isinstance(event.get("arguments"), dict) else {}
-    result = event.get("result") if isinstance(event.get("result"), dict) else {}
     bits = []
     if "path" in args:
         bits.append(str(args["path"]))
@@ -81,8 +80,16 @@ def render_tool(theme, event):
         bits.append(f"replace {len(str(args.get('old_str', '')))} chars")
     elif tool == "write_file":
         bits.append(f"write {len(str(args.get('content', '')))} chars")
-    header = " ".join(["⚒", tool, *bits])
-    parts = [Text.from_markup(f"[{theme['info']}]{escape(header)}[/]")]
+    return " ".join(["⚒", tool, *bits])
+
+
+def render_tool_call(theme, event):
+    return Text.from_markup(f"[{theme['info']}]{escape(tool_header(event))} …[/]")
+
+
+def render_tool(theme, event):
+    result = event.get("result") if isinstance(event.get("result"), dict) else {}
+    parts = [Text.from_markup(f"[{theme['info']}]{escape(tool_header(event))}[/]")]
     if result and not result.get("ok", True):
         error = escape(str(result.get("error", "")))
         parts.append(Text.from_markup(f"[{theme['error']}]  error: {error}[/]"))
@@ -90,6 +97,27 @@ def render_tool(theme, event):
     if diff:
         parts.append(Text(diff, style=theme["info"]))
     return Group(*parts)
+
+
+def render_event(theme, event):
+    """Render one streamed agent event for the thought-process dropdown; None to skip."""
+    kind = event.get("type")
+    if kind == "round":
+        parts = []
+        reasoning = event.get("reasoning") or ""
+        if reasoning:
+            rendered = render_thinking(theme, reasoning)
+            if rendered is not None:
+                parts.append(rendered)
+        content = event.get("content") or ""
+        if content:
+            parts.append(Text(content, style=theme["thinking"]))
+        return Group(*parts) if parts else None
+    if kind == "tool_call":
+        return render_tool_call(theme, event)
+    if kind == "tool_result":
+        return render_tool(theme, event)
+    return None
 
 
 def render_info(theme, text):

@@ -1,13 +1,15 @@
+import os
 from itertools import cycle
+from pathlib import Path
 
 from rich.style import Style
 from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Input, RichLog, SelectionList, Static
+from textual.widgets import Collapsible, Input, SelectionList, Static
 from textual.widgets.selection_list import Selection
 
 from . import commands
@@ -84,6 +86,85 @@ class ModelPicker(ListPicker):
         super().__init__(current, models, bg, accent, "pick a model — ↑/↓ + enter, esc to close")
 
 
+class ThoughtProcess(Collapsible):
+    """One turn's live event stream behind a collapsed 'thought process' dropdown."""
+
+    MAX_BLOCKS = 400
+
+    def __init__(self, theme, events):
+        log = VerticalScroll(classes="process-log")
+        log.styles.color = _hex_color(theme["thinking"], "#c4a3a3")
+        title = Text("thought process", style=theme["thinking"])
+        super().__init__(log, title=title, collapsed=True, classes="process")
+        self.events = events
+        self._log = log
+        self._live = {}
+        self._pending = []
+        self._pending_tools = []
+        for event in events:
+            self._write_event(theme, event)
+
+    def on_mount(self):
+        for block in self._pending:
+            self._log.mount(block)
+        self._pending.clear()
+        while len(self._log.children) > self.MAX_BLOCKS:
+            self._log.children[0].remove()
+
+    def add_event(self, theme, event):
+        self.events.append(event)
+        self._write_event(theme, event)
+
+    def _write_event(self, theme, event):
+        kind = event.get("type")
+        if kind == "delta":
+            self._append_delta(theme, event.get("field", ""), event.get("text", ""))
+            return
+        if kind == "reply":
+            block = self._live.pop("content", None)
+            if block is not None:
+                self._discard_block(block)
+        self._live = {}
+        if kind == "tool_call":
+            block = Static(ui.render_tool_call(theme, event))
+            self._pending_tools.append(block)
+            self._mount_block(block)
+            return
+        if kind == "tool_result" and self._pending_tools:
+            self._pending_tools.pop(0).update(ui.render_tool(theme, event))
+            return
+        rendered = ui.render_event(theme, event)
+        if rendered is not None:
+            self._mount_block(rendered)
+
+    def _append_delta(self, theme, field, text):
+        if field not in ("reasoning", "content") or not text:
+            return
+        if field not in self._live:
+            if field == "reasoning":
+                self._mount_block(Static(Text("thinking", style=theme["thinking"])))
+            self._live[field] = Static(Text("", style=theme["thinking"]))
+            self._mount_block(self._live[field])
+        body = self._live[field].content
+        body.append(text)
+        self._live[field].update(body)
+
+    def _discard_block(self, block):
+        if block in self._pending:
+            self._pending.remove(block)
+        elif block.is_mounted:
+            block.remove()
+
+    def _mount_block(self, renderable):
+        block = renderable if isinstance(renderable, Static) else Static(renderable)
+        if self._log.is_mounted:
+            self._log.mount(block)
+            if len(self._log.children) > self.MAX_BLOCKS:
+                self._log.children[0].remove()
+        else:
+            self._pending.append(block)
+
+
 class ChaosApp(App):
     CSS = """
     #topbar { dock: top; height: auto; padding: 1 2 0 2; }
@@ -92,7 +173,14 @@ class ChaosApp(App):
     #mascot { height: 6; width: 16; text-align: right; }
     #status { height: 1; width: 16; text-align: right; padding: 0 1; }
     #log { height: 1fr; padding: 0 2; }
-    #input { dock: bottom; margin: 0 2 1 2; }
+    .process { margin: 0 0 0 1; border-top: none; }
+    .process, .process:focus-within, .process *, .process *:hover, .process *:focus, .process *:focus-within {
+        background: transparent;
+    }
+    .process-log { height: auto; max-height: 20; padding: 0 0 0 2; }
+    #bottom { dock: bottom; height: auto; }
+    #input { margin: 0 2; }
+    #cwd { height: 1; padding: 0 2; }
     """
 
     BINDINGS = [("ctrl+q", "exit_app", "Quit")]
@@ -105,11 +193,21 @@ class ChaosApp(App):
         self.theme_name = cfg.get("theme_name") or config_mod.DEFAULT_THEME_NAME
         self.ui_theme = config_mod.theme(cfg, self.theme_name)
         self.messages = []
+        self.workspace_root = Path(cfg.get("workspace_root") or os.getcwd()).resolve()
         self._log_items = []
         self._spinner_on = False
         self._spinner_frames = cycle("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
         self._mascot_up = False
         self._face_index = 0
+
+    def _cwd_text(self):
+        root = str(self.workspace_root)
+        home = os.path.expanduser("~")
+        if root == home:
+            return "~"
+        if root.startswith(home + os.sep):
+            return "~" + root[len(home):]
+        return root
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="topbar"):
@@ -121,8 +219,10 @@ class ChaosApp(App):
             with Vertical(id="right"):
                 yield Static(ui.mascot_text(theme=self.ui_theme), id="mascot")
                 yield Static("", id="status")
-        yield RichLog(id="log")
-        yield Input(placeholder="ask chaos…", id="input")
+        yield VerticalScroll(id="log")
+        with Vertical(id="bottom"):
+            yield Input(placeholder="ask chaos…", id="input")
+            yield Static(Text(self._cwd_text()), id="cwd")
 
     def on_mount(self):
         self._apply_theme()
@@ -134,33 +234,41 @@ class ChaosApp(App):
         bg = _hex_color(theme["background"], "#1a0d0a")
         info = _hex_color(theme["info"], "#888888")
         self.screen.styles.background = bg
-        for widget in self.query("#topbar, #topbar *, #log, #input"):
+        for widget in self.query("#topbar, #topbar *, #log, #log *, #bottom, #bottom *"):
             widget.styles.background = bg
         self.query_one("#name").styles.color = _hex_color(theme["banner"], "#ffaf00")
-        for widget in self.query("#model, #tagline, #helpline, #status"):
+        for widget in self.query("#model, #tagline, #helpline, #status, #cwd"):
             widget.styles.color = info
         self.query_one("#input").styles.border = ("solid", _hex_color(theme["prompt"], "#00d7ff"))
         self.query_one("#mascot", Static).update(ui.mascot_text(theme=theme))
 
     def _log(self, kind, payload):
         self._log_items.append((kind, payload))
-        rendered = self._render_item(kind, payload)
-        if rendered is not None:
-            self.log_widget.write(rendered)
+        return self._mount_item(kind, payload)
 
     def _render_item(self, kind, payload):
         return _RENDERERS[kind](self.ui_theme, payload)
 
-    def _rebuild_log(self):
-        self.log_widget.clear()
-        for kind, payload in self._log_items:
+    def _mount_item(self, kind, payload):
+        if kind == "process":
+            widget = ThoughtProcess(self.ui_theme, payload)
+            self.log_widget.mount(widget)
+        else:
             rendered = self._render_item(kind, payload)
-            if rendered is not None:
-                self.log_widget.write(rendered)
+            widget = Static(rendered) if rendered is not None else None
+            if widget is not None:
+                self.log_widget.mount(widget)
+        self.log_widget.scroll_end(animate=False)
+        return widget
+
+    def _rebuild_log(self):
+        self.log_widget.remove_children()
+        for kind, payload in self._log_items:
+            self._mount_item(kind, payload)
 
     @property
     def log_widget(self):
-        return self.query_one("#log", RichLog)
+        return self.query_one("#log", VerticalScroll)
 
     def action_exit_app(self):
         self.exit()
@@ -197,7 +305,8 @@ class ChaosApp(App):
         self.messages.append({"role": "user", "content": text})
         self._log("user", text)
         self._set_spinner(True)
-        self._ask()
+        process = self._log("process", [])
+        self._ask(process)
 
     def _dispatch_command(self, name, arg):
         if name in ("/exit", "/quit"):
@@ -208,7 +317,7 @@ class ChaosApp(App):
         elif name == "/clear":
             self.messages.clear()
             self._log_items.clear()
-            self.log_widget.clear()
+            self.log_widget.remove_children()
         elif name == "/model":
             self._model_command(arg)
         elif name == "/theme":
@@ -283,20 +392,23 @@ class ChaosApp(App):
                 self._log("error", f"could not save theme to config: {exc}")
 
     @work(thread=True)
-    def _ask(self):
+    def _ask(self, process):
+        def on_event(event):
+            self.call_from_thread(self._add_process_event, process, event)
+
         try:
-            reply = respond(self.cfg, self.ref, self.messages)
+            reply = respond(self.cfg, self.ref, self.messages, on_event=on_event, stream=True)
         except Exception as exc:
             self.call_from_thread(self._fail, exc)
             return
         self.call_from_thread(self._show_reply, reply)
 
+    def _add_process_event(self, process, event):
+        process.add_event(self.ui_theme, event)
+        self.log_widget.scroll_end(animate=False)
+
     def _show_reply(self, reply):
         self._set_spinner(False)
-        for event in reply.events:
-            self._log("tool", event)
-        if reply.reasoning:
-            self._log("thinking", reply.reasoning)
         self._log("reply", reply.text)
 
     def _fail(self, exc):

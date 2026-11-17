@@ -1,9 +1,15 @@
+import json
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
-from textual.widgets import Input, RichLog, Static
+from rich.console import Console
+from textual.containers import VerticalScroll
+from textual.widgets import Input, Static
 
-from chaos.app import ChaosApp
+from chaos import ui
+from chaos.app import ChaosApp, ThoughtProcess
 from chaos.llm import Reply
 
 CFG = {
@@ -11,9 +17,36 @@ CFG = {
     "providers": {"p": {"base_url": "https://x/v1", "api_key": "k", "models": ["m", "m2"]}},
 }
 
+_console = Console(width=100)
+
+
+def _renderable_text(renderable):
+    with _console.capture() as capture:
+        _console.print(renderable)
+    return capture.get()
+
 
 def log_text(app):
-    return "\n".join(strip.text for strip in app.query_one("#log", RichLog).lines)
+    parts = []
+    for child in app.query_one("#log", VerticalScroll).children:
+        if isinstance(child, ThoughtProcess):
+            delta_buf = []
+            for event in child.events:
+                if event.get("type") == "delta":
+                    if event.get("field") == "reasoning":
+                        delta_buf.append(event.get("text", ""))
+                    continue
+                if delta_buf:
+                    parts.append("".join(delta_buf))
+                    delta_buf = []
+                rendered = ui.render_event(app.ui_theme, event)
+                if rendered is not None:
+                    parts.append(_renderable_text(rendered))
+            if delta_buf:
+                parts.append("".join(delta_buf))
+        elif isinstance(child, Static):
+            parts.append(_renderable_text(child.content))
+    return "\n".join(parts)
 
 
 async def type_and_submit(app, pilot, text):
@@ -28,7 +61,7 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
     async def test_prompt_shows_thinking_and_reply(self):
         app = ChaosApp(CFG, "p/m")
         async with app.run_test() as pilot:
-            with patch("chaos.agent.chat", return_value=Reply(text="hello **world**", reasoning="hmm")):
+            with patch("chaos.agent.chat_stream", return_value=Reply(text="hello **world**", reasoning="hmm")):
                 await type_and_submit(app, pilot, "hi")
             text = log_text(app)
             self.assertIn("hi", text)
@@ -37,27 +70,154 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(app.messages[-1], {"role": "assistant", "content": "hello **world**"})
             self.assertEqual(str(app.query_one("#status", Static).render()), "")
 
-    async def test_tool_events_are_logged_before_the_reply(self):
-        event = {
-            "tool": "edit_file",
-            "arguments": {"path": "a.py", "old_str": "x", "new_str": "y"},
-            "result": {"ok": True, "diff": "-x\n+y\n"},
-        }
+    async def test_tool_events_stream_into_the_thought_process_before_the_reply(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg = {**CFG, "workspace_root": d}
+            Path(d, "a.py").write_text("x\n", encoding="utf-8")
+            call = {
+                "id": "1",
+                "type": "function",
+                "function": {
+                    "name": "edit_file",
+                    "arguments": json.dumps({"path": "a.py", "old_str": "x", "new_str": "y"}),
+                },
+            }
+            app = ChaosApp(cfg, "p/m")
+            async with app.run_test() as pilot:
+                with patch(
+                    "chaos.agent.chat_stream",
+                    side_effect=[Reply(text="", tool_calls=(call,)), Reply(text="done")],
+                ):
+                    await type_and_submit(app, pilot, "hi")
+                text = log_text(app)
+                self.assertIn("edit_file a.py", text)
+                self.assertIn("+y", text)
+                self.assertIn("done", text)
+                self.assertLess(text.index("edit_file a.py"), text.index("done"))
+
+    async def test_tool_call_and_result_render_as_a_single_block(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg = {**CFG, "workspace_root": d}
+            Path(d, "a.py").write_text("x\n", encoding="utf-8")
+            call = {
+                "id": "1",
+                "type": "function",
+                "function": {
+                    "name": "edit_file",
+                    "arguments": json.dumps({"path": "a.py", "old_str": "x", "new_str": "y"}),
+                },
+            }
+            app = ChaosApp(cfg, "p/m")
+            async with app.run_test() as pilot:
+                with patch(
+                    "chaos.agent.chat_stream",
+                    side_effect=[Reply(text="", tool_calls=(call,)), Reply(text="done")],
+                ):
+                    await type_and_submit(app, pilot, "hi")
+                process = app.query_one(ThoughtProcess)
+                blocks = [_renderable_text(w.content) for w in process.query(".process-log Static")]
+                headers = [b for b in blocks if "edit_file a.py" in b]
+                self.assertEqual(len(headers), 1)
+                self.assertNotIn("…", headers[0])
+                self.assertIn("+y", headers[0])
+
+    async def test_thought_process_dropdown_is_collapsed_by_default_and_expandable(self):
         app = ChaosApp(CFG, "p/m")
         async with app.run_test() as pilot:
-            with patch(
-                "chaos.app.respond", return_value=Reply(text="done", events=(event,))
-            ):
+            with patch("chaos.agent.chat_stream", return_value=Reply(text="hi there", reasoning="hmm")):
                 await type_and_submit(app, pilot, "hi")
-            text = log_text(app)
-            self.assertIn("edit_file a.py", text)
-            self.assertIn("+y", text)
-            self.assertIn("done", text)
+            process = app.query_one(ThoughtProcess)
+            self.assertTrue(process.collapsed)
+            self.assertIn("hmm", log_text(app))
+            process.collapsed = False
+            await pilot.pause()
+            self.assertFalse(process.collapsed)
+            inner_text = "\n".join(
+                _renderable_text(w.content) for w in process.query(".process-log Static")
+            )
+            self.assertIn("hmm", inner_text)
+
+    async def test_thought_process_blends_with_app_background_and_dim_text(self):
+        from textual.color import Color
+
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            with patch("chaos.agent.chat_stream", return_value=Reply(text="hi", reasoning="hmm")):
+                await type_and_submit(app, pilot, "hello")
+            process = app.query_one(ThoughtProcess)
+            for widget in [process, *process.query("*")]:
+                self.assertEqual(widget.styles.background.a, 0, type(widget).__name__)
+            log_bg = app.query_one("#log", VerticalScroll).styles.background
+            self.assertEqual(log_bg, Color.parse("#1a0d0a"))
+            inner = process.query_one(".process-log", VerticalScroll)
+            self.assertEqual(inner.styles.color, Color.parse("#c4a3a3"))
+
+    async def test_reasoning_streams_live_into_the_thought_process(self):
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            def fake_stream(**kwargs):
+                on_delta = kwargs["on_delta"]
+                for chunk in ("I ", "should ", "bump x"):
+                    on_delta("reasoning", chunk)
+                on_delta("content", "done")
+                return Reply(text="done", reasoning="I should bump x")
+
+            with patch("chaos.agent.chat_stream", side_effect=fake_stream):
+                await type_and_submit(app, pilot, "hi")
+            process = app.query_one(ThoughtProcess)
+            self.assertEqual(
+                [e["type"] for e in process.events],
+                ["delta", "delta", "delta", "delta", "reply"],
+            )
+            self.assertIn("I should bump x", log_text(app))
+            self.assertIn("done", log_text(app))
+
+    async def test_streamed_intermediate_text_stays_and_final_reply_is_not_duplicated(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg = {**CFG, "workspace_root": d}
+            Path(d, "a.py").write_text("x = 1\n", encoding="utf-8")
+            app = ChaosApp(cfg, "p/m")
+            call = {
+                "id": "1",
+                "type": "function",
+                "function": {
+                    "name": "edit_file",
+                    "arguments": json.dumps({"path": "a.py", "old_str": "x = 1", "new_str": "x = 2"}),
+                },
+            }
+            state = {"n": 0}
+
+            def fake_stream(**kwargs):
+                state["n"] += 1
+                on_delta = kwargs["on_delta"]
+                if state["n"] == 1:
+                    on_delta("content", "Let me check a.py. ")
+                    return Reply(text="Let me check a.py. ", tool_calls=(call,))
+                on_delta("content", "done")
+                return Reply(text="done")
+
+            async with app.run_test() as pilot:
+                with patch("chaos.agent.chat_stream", side_effect=fake_stream):
+                    await type_and_submit(app, pilot, "bump x")
+                blocks = [str(w.content) for w in app.query_one(ThoughtProcess).query(".process-log Static")]
+                joined = "|".join(blocks)
+                self.assertIn("Let me check a.py.", joined)
+                self.assertNotIn("done", joined)
+                self.assertIn("done", log_text(app))
+
+    async def test_theme_switch_rebuilds_the_thought_process(self):
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            with patch("chaos.agent.chat_stream", return_value=Reply(text="ok", reasoning="thinking hard")):
+                await type_and_submit(app, pilot, "hi")
+            await type_and_submit(app, pilot, "/theme mono")
+            self.assertEqual(len(app.query(ThoughtProcess)), 1)
+            self.assertIn("thinking hard", log_text(app))
 
     async def test_error_is_shown_and_user_message_popped(self):
         app = ChaosApp(CFG, "p/m")
         async with app.run_test() as pilot:
-            with patch("chaos.agent.chat", side_effect=Exception("boom")):
+            with patch("chaos.agent.chat_stream", side_effect=Exception("boom")):
                 await type_and_submit(app, pilot, "hi")
             self.assertIn("error: boom", log_text(app))
             self.assertEqual([m["role"] for m in app.messages], ["system"])
@@ -232,6 +392,23 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             text = log_text(app)
             for cmd in ("/help", "/model", "/theme", "/clear", "/exit"):
                 self.assertIn(cmd, text)
+
+    async def test_bottom_bar_shows_the_workspace_directory_below_the_input(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg = {**CFG, "workspace_root": d}
+            app = ChaosApp(cfg, "p/m")
+            async with app.run_test(size=(80, 24)) as pilot:
+                await pilot.pause()
+                cwd = app.query_one("#cwd", Static)
+                self.assertIn(str(Path(d).resolve()), str(cwd.content))
+                self.assertGreater(cwd.region.y, app.query_one("#input", Input).region.y)
+
+    def test_cwd_text_compresses_the_home_directory(self):
+        app = ChaosApp(CFG, "p/m")
+        app.workspace_root = Path.home() / "proj"
+        self.assertEqual(app._cwd_text(), "~/proj")
+        app.workspace_root = Path("/tmp/elsewhere")
+        self.assertEqual(app._cwd_text(), "/tmp/elsewhere")
 
     async def test_clear_empties_log(self):
         app = ChaosApp(CFG, "p/m")

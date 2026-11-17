@@ -34,6 +34,40 @@ class RenderTest(unittest.TestCase):
         rendered = ui.render_tool(config_mod.DEFAULT_THEME, event)
         self.assertIn("error: nope", rendered.renderables[1].plain)
 
+    def test_render_event_dispatches_on_type(self):
+        theme = config_mod.DEFAULT_THEME
+        round_event = ui.render_event(theme, {"type": "round", "reasoning": "hmm"})
+        self.assertIsInstance(round_event, Group)
+        call_event = ui.render_event(
+            theme, {"type": "tool_call", "tool": "edit_file", "arguments": {"path": "a.py", "old_str": "x"}}
+        )
+        self.assertIn("edit_file a.py", call_event.plain)
+        self.assertIn("…", call_event.plain)
+        result_event = ui.render_event(
+            theme,
+            {
+                "type": "tool_result",
+                "tool": "edit_file",
+                "arguments": {"path": "a.py", "old_str": "x", "new_str": "y"},
+                "result": {"ok": True, "diff": "-x\n+y\n"},
+            },
+        )
+        self.assertIsInstance(result_event, Group)
+        self.assertIn("+y", result_event.renderables[1].plain)
+        self.assertIsNone(ui.render_event(theme, {"type": "reply", "text": "done"}))
+        self.assertIsNone(ui.render_event(theme, {"type": "round", "reasoning": ""}))
+
+    def test_round_event_renders_reasoning_and_intermediate_content(self):
+        theme = config_mod.DEFAULT_THEME
+        rendered = ui.render_event(
+            theme, {"type": "round", "reasoning": "hmm", "content": "let me look"}
+        )
+        self.assertIsInstance(rendered, Group)
+        self.assertIn("hmm", rendered.renderables[0].renderables[1].plain)
+        self.assertIn("let me look", rendered.renderables[1].plain)
+        only_content = ui.render_event(theme, {"type": "round", "content": "checking files"})
+        self.assertIn("checking files", only_content.renderables[0].plain)
+
 
 if __name__ == "__main__":
     unittest.main()
