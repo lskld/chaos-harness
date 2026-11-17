@@ -18,6 +18,10 @@ MASCOT_FLAME_LINES = 2
 MASCOT_IDLE_FACE = ">_<"
 THINK_FACES = ["-_-", "o_O", "x_x", ">_<"]
 
+NAME = "CHAOS"
+TAGLINE = "hackathon agent harness · made by Team Chaos"
+HELP_HINT = "type /help for the list of commands"
+
 
 def mascot_text(face=MASCOT_IDLE_FACE, up=False, theme=None):
     theme = theme or config_mod.DEFAULT_THEME
@@ -35,10 +39,10 @@ def mascot_text(face=MASCOT_IDLE_FACE, up=False, theme=None):
 
 
 def render_banner(theme, ref):
-    name = Text("CHAOS", style=theme["banner"])
-    tagline = Text("hackathon agent harness · made by Team Chaos", style=theme["info"])
+    name = Text(NAME, style=theme["banner"])
+    tagline = Text(TAGLINE, style=theme["info"])
     model = Text(f"model: {ref}", style=theme["info"])
-    hints = Text("/model switch model · /clear reset · /exit quit", style=theme["info"])
+    hints = Text(HELP_HINT, style=theme["info"])
     return Panel(
         Group(mascot_text(theme=theme), name, tagline, Text(), model, hints),
         border_style=theme["banner"],

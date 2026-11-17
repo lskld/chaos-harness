@@ -96,10 +96,10 @@ class ChaosApp(App):
     def compose(self) -> ComposeResult:
         with Horizontal(id="topbar"):
             with Vertical(id="titles"):
-                yield Static(Text("CHAOS", style=self.ui_theme["banner"]), id="name")
+                yield Static(Text(ui.NAME, style=self.ui_theme["banner"]), id="name")
                 yield Static(f"model: {self.ref}", id="model")
-                yield Static("hackathon agent harness · made by Team Chaos", id="tagline")
-                yield Static("type /help for the list of commands", id="helpline")
+                yield Static(ui.TAGLINE, id="tagline")
+                yield Static(ui.HELP_HINT, id="helpline")
             with Vertical(id="right"):
                 yield Static(ui.mascot_text(theme=self.ui_theme), id="mascot")
                 yield Static("", id="status")

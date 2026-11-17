@@ -33,6 +33,15 @@ def run_repl(lines, cfg, path, ref="p/m"):
 
 
 class ReplCommandTest(unittest.TestCase):
+    def test_banner_points_to_help_instead_of_stale_command_list(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            path.write_text(json.dumps(CFG), encoding="utf-8")
+            cfg = config_mod.load(path)
+            out = run_repl(["/exit"], cfg, path)
+            self.assertIn("type /help", out)
+            self.assertNotIn("switch model", out)
+
     def test_theme_command_is_handled_and_persisted(self):
         with tempfile.TemporaryDirectory() as d:
             path = Path(d) / "config.json"
