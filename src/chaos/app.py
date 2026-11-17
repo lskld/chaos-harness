@@ -89,6 +89,7 @@ class ThoughtProcess(Collapsible):
 
     def __init__(self, theme, events):
         inner = RichLog(classes="process-log", max_lines=400)
+        inner.styles.color = _hex_color(theme["thinking"], "#c4a3a3")
         title = Text("thought process", style=theme["thinking"])
         super().__init__(inner, title=title, collapsed=True, classes="process")
         self.events = events
@@ -114,7 +115,10 @@ class ChaosApp(App):
     #mascot { height: 6; width: 16; text-align: right; }
     #status { height: 1; width: 16; text-align: right; padding: 0 1; }
     #log { height: 1fr; padding: 0 2; }
-    .process { margin: 0 0 0 1; }
+    .process { margin: 0 0 0 1; border-top: none; }
+    .process, .process:focus-within, .process *, .process *:hover, .process *:focus, .process *:focus-within {
+        background: transparent;
+    }
     .process-log { height: auto; max-height: 20; padding: 0 0 0 2; }
     #input { dock: bottom; margin: 0 2 1 2; }
     """

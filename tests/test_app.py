@@ -99,6 +99,21 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             inner_lines = "\n".join(strip.text for strip in process.query_one(RichLog).lines)
             self.assertIn("hmm", inner_lines)
 
+    async def test_thought_process_blends_with_app_background_and_dim_text(self):
+        from textual.color import Color
+
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            with patch("chaos.agent.chat", return_value=Reply(text="hi", reasoning="hmm")):
+                await type_and_submit(app, pilot, "hello")
+            process = app.query_one(ThoughtProcess)
+            for widget in [process, *process.query("*")]:
+                self.assertEqual(widget.styles.background.a, 0, type(widget).__name__)
+            log_bg = app.query_one("#log", VerticalScroll).styles.background
+            self.assertEqual(log_bg, Color.parse("#1a0d0a"))
+            inner = process.query_one(RichLog)
+            self.assertEqual(inner.styles.color, Color.parse("#c4a3a3"))
+
     async def test_theme_switch_rebuilds_the_thought_process(self):
         app = ChaosApp(CFG, "p/m")
         async with app.run_test() as pilot:
