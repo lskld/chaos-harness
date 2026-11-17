@@ -38,9 +38,10 @@ def respond(cfg, ref, messages, on_event=None, stream=False):
     """One agent turn: run the tool loop until the model answers without tool calls.
 
     If on_event is given, it is called with a typed event as each step happens:
-    {"type": "round", "reasoning": ...}, {"type": "tool_call", ...},
+    {"type": "round", "reasoning"?, "content"?}, {"type": "tool_call", ...},
     {"type": "tool_result", ...} and {"type": "reply", "text": ...}; with stream=True
     it also gets {"type": "delta", "field": "content"|"reasoning", "text": ...} per chunk.
+    A round's "content" carries any text the model produced before calling tools.
     """
     base_url, api_key, model = config_mod.resolve(cfg, ref)
     ctx = _context(cfg)
@@ -76,8 +77,13 @@ def respond(cfg, ref, messages, on_event=None, stream=False):
                 messages=messages,
                 tools=tools_mod.schemas(),
             )
+        round_event = {"type": "round"}
         if reply.reasoning and "reasoning" not in streamed_fields:
-            emit({"type": "round", "reasoning": reply.reasoning})
+            round_event["reasoning"] = reply.reasoning
+        if reply.tool_calls and reply.text and "content" not in streamed_fields:
+            round_event["content"] = reply.text
+        if len(round_event) > 1:
+            emit(round_event)
         if not reply.tool_calls:
             messages.append({"role": "assistant", "content": reply.text})
             emit({"type": "reply", "text": reply.text})

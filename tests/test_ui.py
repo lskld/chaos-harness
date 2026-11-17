@@ -57,6 +57,17 @@ class RenderTest(unittest.TestCase):
         self.assertIsNone(ui.render_event(theme, {"type": "reply", "text": "done"}))
         self.assertIsNone(ui.render_event(theme, {"type": "round", "reasoning": ""}))
 
+    def test_round_event_renders_reasoning_and_intermediate_content(self):
+        theme = config_mod.DEFAULT_THEME
+        rendered = ui.render_event(
+            theme, {"type": "round", "reasoning": "hmm", "content": "let me look"}
+        )
+        self.assertIsInstance(rendered, Group)
+        self.assertIn("hmm", rendered.renderables[0].renderables[1].plain)
+        self.assertIn("let me look", rendered.renderables[1].plain)
+        only_content = ui.render_event(theme, {"type": "round", "content": "checking files"})
+        self.assertIn("checking files", only_content.renderables[0].plain)
+
 
 if __name__ == "__main__":
     unittest.main()

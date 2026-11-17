@@ -132,6 +132,26 @@ class ToolLoopTest(unittest.TestCase):
             self.assertEqual(seen[-1]["text"], "done")
             self.assertEqual([e["type"] for e in reply.events], ["tool_result"])
 
+    def test_round_event_carries_text_the_model_said_before_tool_calls(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg = {**CFG, "workspace_root": d}
+            messages = [{"role": "user", "content": "go"}]
+            call = {
+                "id": "1",
+                "type": "function",
+                "function": {"name": "list_files", "arguments": "{}"},
+            }
+            calls = [Reply(text="let me look around", tool_calls=(call,)), Reply(text="done")]
+            seen = []
+            with patch("chaos.agent.chat", side_effect=calls):
+                reply = respond(cfg, "p/m", messages, on_event=seen.append)
+            rounds = [e for e in seen if e["type"] == "round"]
+            self.assertEqual(len(rounds), 1)
+            self.assertEqual(rounds[0]["content"], "let me look around")
+            self.assertNotIn("reasoning", rounds[0])
+            self.assertEqual([e["type"] for e in seen], ["round", "tool_call", "tool_result", "reply"])
+            self.assertEqual(reply.text, "done")
+
     def test_stream_emits_reasoning_deltas_and_skips_duplicate_round(self):
         messages = [{"role": "user", "content": "hi"}]
         seen = []

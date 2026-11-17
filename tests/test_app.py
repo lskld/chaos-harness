@@ -146,6 +146,39 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn("I should bump x", log_text(app))
             self.assertIn("done", log_text(app))
 
+    async def test_streamed_intermediate_text_stays_and_final_reply_is_not_duplicated(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg = {**CFG, "workspace_root": d}
+            Path(d, "a.py").write_text("x = 1\n", encoding="utf-8")
+            app = ChaosApp(cfg, "p/m")
+            call = {
+                "id": "1",
+                "type": "function",
+                "function": {
+                    "name": "edit_file",
+                    "arguments": json.dumps({"path": "a.py", "old_str": "x = 1", "new_str": "x = 2"}),
+                },
+            }
+            state = {"n": 0}
+
+            def fake_stream(**kwargs):
+                state["n"] += 1
+                on_delta = kwargs["on_delta"]
+                if state["n"] == 1:
+                    on_delta("content", "Let me check a.py. ")
+                    return Reply(text="Let me check a.py. ", tool_calls=(call,))
+                on_delta("content", "done")
+                return Reply(text="done")
+
+            async with app.run_test() as pilot:
+                with patch("chaos.agent.chat_stream", side_effect=fake_stream):
+                    await type_and_submit(app, pilot, "bump x")
+                blocks = [str(w.content) for w in app.query_one(ThoughtProcess).query(".process-log Static")]
+                joined = "|".join(blocks)
+                self.assertIn("Let me check a.py.", joined)
+                self.assertNotIn("done", joined)
+                self.assertIn("done", log_text(app))
+
     async def test_theme_switch_rebuilds_the_thought_process(self):
         app = ChaosApp(CFG, "p/m")
         async with app.run_test() as pilot:

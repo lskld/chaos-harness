@@ -96,7 +96,7 @@ class ThoughtProcess(Collapsible):
         super().__init__(log, title=title, collapsed=True, classes="process")
         self.events = events
         self._log = log
-        self._live = None
+        self._live = {}
         self._pending = []
         for event in events:
             self._write_event(theme, event)
@@ -116,21 +116,32 @@ class ThoughtProcess(Collapsible):
         if event.get("type") == "delta":
             self._append_delta(theme, event.get("field", ""), event.get("text", ""))
             return
-        self._live = None
+        if event.get("type") == "reply":
+            block = self._live.pop("content", None)
+            if block is not None:
+                self._discard_block(block)
+        self._live = {}
         rendered = ui.render_event(theme, event)
         if rendered is not None:
             self._mount_block(rendered)
 
     def _append_delta(self, theme, field, text):
-        if field != "reasoning" or not text:
+        if field not in ("reasoning", "content") or not text:
             return
-        if self._live is None:
-            self._mount_block(Static(Text("thinking", style=theme["thinking"])))
-            self._live = Static(Text("", style=theme["thinking"]))
-            self._mount_block(self._live)
-        body = self._live.content
+        if field not in self._live:
+            if field == "reasoning":
+                self._mount_block(Static(Text("thinking", style=theme["thinking"])))
+            self._live[field] = Static(Text("", style=theme["thinking"]))
+            self._mount_block(self._live[field])
+        body = self._live[field].content
         body.append(text)
-        self._live.update(body)
+        self._live[field].update(body)
+
+    def _discard_block(self, block):
+        if block in self._pending:
+            self._pending.remove(block)
+        elif block.is_mounted:
+            block.remove()
 
     def _mount_block(self, renderable):
         block = renderable if isinstance(renderable, Static) else Static(renderable)

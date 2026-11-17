@@ -103,7 +103,16 @@ def render_event(theme, event):
     """Render one streamed agent event for the thought-process dropdown; None to skip."""
     kind = event.get("type")
     if kind == "round":
-        return render_thinking(theme, event.get("reasoning") or "")
+        parts = []
+        reasoning = event.get("reasoning") or ""
+        if reasoning:
+            rendered = render_thinking(theme, reasoning)
+            if rendered is not None:
+                parts.append(rendered)
+        content = event.get("content") or ""
+        if content:
+            parts.append(Text(content, style=theme["thinking"]))
+        return Group(*parts) if parts else None
     if kind == "tool_call":
         return render_tool_call(theme, event)
     if kind == "tool_result":

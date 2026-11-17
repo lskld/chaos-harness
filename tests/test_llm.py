@@ -95,6 +95,14 @@ class ChatTest(unittest.TestCase):
             reply = chat(base_url="https://api.example.com/v1", api_key="k", model="m", messages=[])
         self.assertEqual(reply.reasoning, "thinking...")
 
+    def test_thinking_field_is_extracted(self):
+        with patch("chaos.llm.requests.post") as post:
+            post.return_value = fake_response(
+                payload=payload(content="a", extra_message={"thinking": "ollama style"})
+            )
+            reply = chat(base_url="https://api.example.com/v1", api_key="k", model="m", messages=[])
+        self.assertEqual(reply.reasoning, "ollama style")
+
     def test_tools_are_sent_in_payload_when_given(self):
         tools_payload = [{"type": "function", "function": {"name": "read_file"}}]
         with patch("chaos.llm.requests.post") as post:
@@ -231,6 +239,27 @@ class ChatStreamTest(unittest.TestCase):
         with patch("chaos.llm.requests.post", side_effect=requests.ConnectionError("down")):
             with self.assertRaises(LLMError):
                 chat_stream(base_url="https://x/v1", api_key="k", model="m", messages=[])
+
+    def test_stream_delta_thinking_field_is_treated_as_reasoning(self):
+        lines = [
+            'data: {"choices": [{"delta": {"thinking": "hmm "}}]}',
+            'data: {"choices": [{"delta": {"thinking": "deep"}}]}',
+            'data: {"choices": [{"delta": {"content": "answer"}}]}',
+            "data: [DONE]",
+        ]
+        deltas = []
+        with patch("chaos.llm.requests.post") as post:
+            post.return_value = sse_response(lines)
+            reply = chat_stream(
+                base_url="https://x/v1",
+                api_key="k",
+                model="m",
+                messages=[],
+                on_delta=lambda field, text: deltas.append((field, text)),
+            )
+        self.assertEqual(reply.reasoning, "hmm deep")
+        self.assertEqual(reply.text, "answer")
+        self.assertEqual(deltas[0], ("reasoning", "hmm "))
 
     def test_malformed_sse_lines_are_skipped(self):
         lines = ["data: not json", 'data: {"unexpected": 1}', 'data: {"choices": [{"delta": {"content": "ok"}}]}', "data: [DONE]"]
