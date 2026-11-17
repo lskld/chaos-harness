@@ -184,6 +184,19 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             restarted = ChaosApp(saved, "p/m", config_path=str(path))
             self.assertEqual(restarted.theme_name, "mono")
 
+    async def test_pickers_are_centered_in_the_terminal(self):
+        from chaos.app import ModelPicker, ThemePicker
+
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test(size=(80, 24)) as pilot:
+            for command, picker_cls in (("/model", ModelPicker), ("/theme", ThemePicker)):
+                await type_and_submit(app, pilot, command)
+                self.assertIsInstance(app.screen, picker_cls)
+                region = app.screen.query_one("#picker").region
+                self.assertEqual((region.x, region.y), ((80 - region.width) // 2, (24 - region.height) // 2))
+                await pilot.press("escape")
+                await pilot.pause()
+
     async def test_theme_picker_escape_keeps_theme(self):
         from chaos.app import ThemePicker
 

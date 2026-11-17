@@ -38,7 +38,6 @@ _RENDERERS = {
 
 class ListPicker(ModalScreen):
     CSS = """
-    ListPicker { align: center middle; }
     #picker { width: 42; height: auto; max-height: 14; border: round; padding: 1 2; }
     """
 
@@ -46,6 +45,7 @@ class ListPicker(ModalScreen):
 
     def __init__(self, current, options, bg, accent, hint):
         super().__init__()
+        self.styles.align = ("center", "middle")
         self._current = current
         self._options = options
         self._bg = bg
