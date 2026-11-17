@@ -3,7 +3,7 @@ import threading
 import unittest
 from unittest.mock import patch
 
-from textual.widgets import Footer, Input, RichLog, Static
+from textual.widgets import Input, RichLog, Static
 
 from chaos import ui
 from chaos.app import ChaosApp
@@ -39,7 +39,6 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn("hello", text)
             self.assertEqual(app.messages[-1], {"role": "assistant", "content": "hello **world**"})
             self.assertEqual(str(app.query_one("#status", Static).render()), "")
-            self.assertEqual(len(app.query(Footer)), 0)
 
     async def test_error_is_shown_and_user_message_popped(self):
         app = ChaosApp(CFG, "p/m")

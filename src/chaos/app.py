@@ -27,6 +27,15 @@ def _hex_color(style_str, default):
         return default
 
 
+_RENDERERS = {
+    "user": ui.render_user,
+    "thinking": ui.render_thinking,
+    "reply": ui.render_reply,
+    "info": ui.render_info,
+    "error": ui.render_error,
+}
+
+
 class ThemePicker(ModalScreen):
     CSS = """
     ThemePicker { align: center middle; }
@@ -56,9 +65,6 @@ class ThemePicker(ModalScreen):
         picker.styles.border = ("round", self._accent)
         self.query_one("#hint").styles.color = self._accent
         self.query_one("#list", SelectionList).focus()
-
-    def on_selection_list_option_selected(self, event: SelectionList.OptionSelected):
-        self.dismiss(event.option.value)
 
     def action_pick(self):
         selection_list = self.query_one("#list", SelectionList)
@@ -114,16 +120,15 @@ class ChaosApp(App):
     def _apply_theme(self):
         theme = self.ui_theme
         bg = _hex_color(theme["background"], "#1a0d0a")
+        info = _hex_color(theme["info"], "#888888")
         self.screen.styles.background = bg
         for widget in self.query("#topbar, #topbar *, #log, #input"):
             widget.styles.background = bg
         self.query_one("#name").styles.color = _hex_color(theme["banner"], "#ffaf00")
-        self.query_one("#model").styles.color = _hex_color(theme["info"], "#888888")
-        self.query_one("#tagline").styles.color = _hex_color(theme["info"], "#888888")
-        self.query_one("#helpline").styles.color = _hex_color(theme["info"], "#888888")
+        for widget in self.query("#model, #tagline, #helpline, #status"):
+            widget.styles.color = info
         self.query_one("#input").styles.border = ("solid", _hex_color(theme["prompt"], "#00d7ff"))
-        self.query_one("#status").styles.color = _hex_color(theme["info"], "#888888")
-        self.query_one("#mascot", Static).update(ui.mascot_text(theme=self.ui_theme))
+        self.query_one("#mascot", Static).update(ui.mascot_text(theme=theme))
 
     def _log(self, kind, payload):
         self._log_items.append((kind, payload))
@@ -132,15 +137,7 @@ class ChaosApp(App):
             self.log_widget.write(rendered)
 
     def _render_item(self, kind, payload):
-        theme = self.ui_theme
-        renderers = {
-            "user": lambda: ui.render_user(theme, payload),
-            "thinking": lambda: ui.render_thinking(theme, payload),
-            "reply": lambda: ui.render_reply(theme, payload),
-            "info": lambda: ui.render_info(theme, payload),
-            "error": lambda: ui.render_error(theme, payload),
-        }
-        return renderers[kind]()
+        return _RENDERERS[kind](self.ui_theme, payload)
 
     def _rebuild_log(self):
         self.log_widget.clear()

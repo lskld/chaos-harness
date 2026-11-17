@@ -80,7 +80,7 @@ def repl(console, theme, cfg, ref, config_path=None):
         except KeyboardInterrupt:
             messages.pop()
             console.print()
-            return
+            continue
         except Exception as exc:
             messages.pop()
             ui.print_error(console, theme, exc)

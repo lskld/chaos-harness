@@ -83,9 +83,8 @@ def print_banner(console, theme, ref):
 
 
 def print_thinking(console, theme, reasoning):
-    block = render_thinking(theme, reasoning)
-    if block is not None:
-        console.print(block)
+    if reasoning:
+        console.print(render_thinking(theme, reasoning))
 
 
 def print_reply(console, theme, text):
