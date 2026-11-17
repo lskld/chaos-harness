@@ -4,6 +4,7 @@ import sys
 from rich.console import Console
 from rich.markup import escape
 
+from . import commands
 from . import config as config_mod
 from . import ui
 from .agent import respond
@@ -24,22 +25,15 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 
-def handle_model_command(console, theme, cfg, arg, current):
-    if not arg:
-        for m in config_mod.list_models(cfg):
-            marker = "*" if m == current else " "
-            ui.print_info(console, theme, f"{marker} {m}")
-        return current
-    try:
-        config_mod.resolve(cfg, arg)
-    except config_mod.ConfigError as exc:
-        ui.print_error(console, theme, exc)
-        return current
-    ui.print_info(console, theme, f"switched to {arg}")
-    return arg
+def _print_out(console, theme, out):
+    for kind, text in out:
+        if kind == "error":
+            ui.print_error(console, theme, text)
+        else:
+            ui.print_info(console, theme, text)
 
 
-def repl(console, theme, cfg, ref):
+def repl(console, theme, cfg, ref, config_path=None):
     ui.print_banner(console, theme, ref)
     messages = []
     while True:
@@ -51,26 +45,34 @@ def repl(console, theme, cfg, ref):
         command = line.strip()
         if not command:
             continue
-        if command in ("/exit", "/quit"):
-            return
-        if command == "/help":
-            for line in (
-                "/help — show this list",
-                "/model [provider/model] — list or switch model",
-                "/theme [name] — pick a color theme",
-                "/clear — clear the chat",
-                "/exit — quit",
-            ):
-                ui.print_info(console, theme, line)
-            continue
-        if command == "/clear":
-            messages.clear()
-            ui.print_info(console, theme, "history cleared")
-            continue
-        if command == "/model" or command.startswith("/model "):
-            arg = command.split(maxsplit=1)[1] if " " in command else ""
-            ref = handle_model_command(console, theme, cfg, arg, ref)
-            continue
+        name, arg = commands.split(command)
+        if name in commands.COMMANDS:
+            if name in ("/exit", "/quit"):
+                return
+            if name == "/help":
+                for text in commands.HELP_LINES:
+                    ui.print_info(console, theme, text)
+                continue
+            if name == "/clear":
+                messages.clear()
+                ui.print_info(console, theme, "history cleared")
+                continue
+            if name == "/model":
+                ref, out = commands.model_command(cfg, arg, ref)
+                _print_out(console, theme, out)
+                continue
+            if name == "/theme":
+                new_name, out = commands.theme_command(arg, cfg.get("theme_name"))
+                _print_out(console, theme, out)
+                if new_name:
+                    cfg["theme_name"] = new_name
+                    theme = config_mod.theme(cfg, new_name)
+                    if config_path is not None:
+                        try:
+                            config_mod.save(config_path, cfg)
+                        except OSError as exc:
+                            ui.print_error(console, theme, f"could not save theme to config: {exc}")
+                continue
         messages.append({"role": "user", "content": command})
         try:
             with console.status(f"[{theme['info']}]thinking…[/]", spinner="dots"):
@@ -119,7 +121,7 @@ def main(argv=None):
 
         ChaosApp(cfg, ref, args.config).run()
         return 0
-    repl(console, theme, cfg, ref)
+    repl(console, theme, cfg, ref, args.config)
     return 0
 
 

@@ -10,8 +10,8 @@ from textual.screen import ModalScreen
 from textual.widgets import Input, RichLog, SelectionList, Static
 from textual.widgets.selection_list import Selection
 
+from . import commands
 from . import config as config_mod
-from . import themes as themes_mod
 from . import ui
 from .agent import respond
 
@@ -181,72 +181,56 @@ class ChaosApp(App):
         event.input.clear()
         if not text:
             return
-        if text in ("/exit", "/quit"):
-            self.exit()
-            return
-        if text == "/clear":
-            self.messages.clear()
-            self._log_items.clear()
-            self.log_widget.clear()
-            return
-        if text == "/help":
-            for line in (
-                "/help — show this list",
-                "/model [provider/model] — list or switch model",
-                "/theme [name] — pick a color theme",
-                "/clear — clear the chat",
-                "/exit — quit (ctrl+q works too)",
-            ):
-                self._log("info", line)
-            return
-        if text == "/model" or text.startswith("/model "):
-            arg = text.split(maxsplit=1)[1] if " " in text else ""
-            self._model_command(arg)
-            return
-        if text == "/theme" or text.startswith("/theme "):
-            arg = text.split(maxsplit=1)[1] if " " in text else ""
-            self._theme_command(arg)
+        name, arg = commands.split(text)
+        if name in commands.COMMANDS:
+            self._dispatch_command(name, arg)
             return
         self.messages.append({"role": "user", "content": text})
         self._log("user", text)
         self._set_spinner(True)
         self._ask()
 
-    def _model_command(self, arg):
-        if not arg:
-            for m in config_mod.list_models(self.cfg):
-                marker = "*" if m == self.ref else " "
-                self._log("info", f"{marker} {m}")
-            return
-        try:
-            config_mod.resolve(self.cfg, arg)
-        except config_mod.ConfigError as exc:
-            self._log("error", exc)
-            return
-        self.ref = arg
-        self.query_one("#model", Static).update(f"model: {arg}")
-        self._log("info", f"switched to {arg}")
+    def _dispatch_command(self, name, arg):
+        if name in ("/exit", "/quit"):
+            self.exit()
+        elif name == "/help":
+            for line in commands.HELP_LINES:
+                self._log("info", line)
+        elif name == "/clear":
+            self.messages.clear()
+            self._log_items.clear()
+            self.log_widget.clear()
+        elif name == "/model":
+            current = self.ref
+            self.ref, out = commands.model_command(self.cfg, arg, self.ref)
+            for kind, payload in out:
+                self._log(kind, payload)
+            if self.ref != current:
+                self.query_one("#model", Static).update(f"model: {self.ref}")
+        elif name == "/theme":
+            self._theme_command(arg)
 
     def _theme_command(self, arg):
-        if arg:
-            self._switch_theme(arg)
+        if not arg:
+            theme = self.ui_theme
+            self.push_screen(
+                ThemePicker(
+                    self.theme_name,
+                    config_mod.theme_names(),
+                    _hex_color(theme["background"], "#1a0d0a"),
+                    _hex_color(theme["prompt"], "#ff87a2"),
+                ),
+                callback=self._switch_theme,
+            )
             return
-        theme = self.ui_theme
-        self.push_screen(
-            ThemePicker(
-                self.theme_name,
-                config_mod.theme_names(),
-                _hex_color(theme["background"], "#1a0d0a"),
-                _hex_color(theme["prompt"], "#ff87a2"),
-            ),
-            callback=self._switch_theme,
-        )
+        new_name, out = commands.theme_command(arg, self.theme_name)
+        for kind, payload in out:
+            self._log(kind, payload)
+        if new_name:
+            self._switch_theme(new_name)
 
     def _switch_theme(self, name):
         if not name:
-            return
-        if name not in themes_mod.THEMES:
-            self._log("error", f"unknown theme {name!r}; available: {', '.join(config_mod.theme_names())}")
             return
         self.theme_name = name
         self.ui_theme = config_mod.theme(self.cfg, name)
