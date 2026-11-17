@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from rich.console import Console
 from textual.containers import VerticalScroll
-from textual.widgets import Input, RichLog, Static
+from textual.widgets import Input, Static
 
 from chaos import ui
 from chaos.app import ChaosApp, ThoughtProcess
@@ -30,10 +30,20 @@ def log_text(app):
     parts = []
     for child in app.query_one("#log", VerticalScroll).children:
         if isinstance(child, ThoughtProcess):
+            delta_buf = []
             for event in child.events:
+                if event.get("type") == "delta":
+                    if event.get("field") == "reasoning":
+                        delta_buf.append(event.get("text", ""))
+                    continue
+                if delta_buf:
+                    parts.append("".join(delta_buf))
+                    delta_buf = []
                 rendered = ui.render_event(app.ui_theme, event)
                 if rendered is not None:
                     parts.append(_renderable_text(rendered))
+            if delta_buf:
+                parts.append("".join(delta_buf))
         elif isinstance(child, Static):
             parts.append(_renderable_text(child.content))
     return "\n".join(parts)
@@ -51,7 +61,7 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
     async def test_prompt_shows_thinking_and_reply(self):
         app = ChaosApp(CFG, "p/m")
         async with app.run_test() as pilot:
-            with patch("chaos.agent.chat", return_value=Reply(text="hello **world**", reasoning="hmm")):
+            with patch("chaos.agent.chat_stream", return_value=Reply(text="hello **world**", reasoning="hmm")):
                 await type_and_submit(app, pilot, "hi")
             text = log_text(app)
             self.assertIn("hi", text)
@@ -75,7 +85,7 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             app = ChaosApp(cfg, "p/m")
             async with app.run_test() as pilot:
                 with patch(
-                    "chaos.agent.chat",
+                    "chaos.agent.chat_stream",
                     side_effect=[Reply(text="", tool_calls=(call,)), Reply(text="done")],
                 ):
                     await type_and_submit(app, pilot, "hi")
@@ -88,7 +98,7 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
     async def test_thought_process_dropdown_is_collapsed_by_default_and_expandable(self):
         app = ChaosApp(CFG, "p/m")
         async with app.run_test() as pilot:
-            with patch("chaos.agent.chat", return_value=Reply(text="hi there", reasoning="hmm")):
+            with patch("chaos.agent.chat_stream", return_value=Reply(text="hi there", reasoning="hmm")):
                 await type_and_submit(app, pilot, "hi")
             process = app.query_one(ThoughtProcess)
             self.assertTrue(process.collapsed)
@@ -96,28 +106,50 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             process.collapsed = False
             await pilot.pause()
             self.assertFalse(process.collapsed)
-            inner_lines = "\n".join(strip.text for strip in process.query_one(RichLog).lines)
-            self.assertIn("hmm", inner_lines)
+            inner_text = "\n".join(
+                _renderable_text(w.content) for w in process.query(".process-log Static")
+            )
+            self.assertIn("hmm", inner_text)
 
     async def test_thought_process_blends_with_app_background_and_dim_text(self):
         from textual.color import Color
 
         app = ChaosApp(CFG, "p/m")
         async with app.run_test() as pilot:
-            with patch("chaos.agent.chat", return_value=Reply(text="hi", reasoning="hmm")):
+            with patch("chaos.agent.chat_stream", return_value=Reply(text="hi", reasoning="hmm")):
                 await type_and_submit(app, pilot, "hello")
             process = app.query_one(ThoughtProcess)
             for widget in [process, *process.query("*")]:
                 self.assertEqual(widget.styles.background.a, 0, type(widget).__name__)
             log_bg = app.query_one("#log", VerticalScroll).styles.background
             self.assertEqual(log_bg, Color.parse("#1a0d0a"))
-            inner = process.query_one(RichLog)
+            inner = process.query_one(".process-log", VerticalScroll)
             self.assertEqual(inner.styles.color, Color.parse("#c4a3a3"))
+
+    async def test_reasoning_streams_live_into_the_thought_process(self):
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            def fake_stream(**kwargs):
+                on_delta = kwargs["on_delta"]
+                for chunk in ("I ", "should ", "bump x"):
+                    on_delta("reasoning", chunk)
+                on_delta("content", "done")
+                return Reply(text="done", reasoning="I should bump x")
+
+            with patch("chaos.agent.chat_stream", side_effect=fake_stream):
+                await type_and_submit(app, pilot, "hi")
+            process = app.query_one(ThoughtProcess)
+            self.assertEqual(
+                [e["type"] for e in process.events],
+                ["delta", "delta", "delta", "delta", "reply"],
+            )
+            self.assertIn("I should bump x", log_text(app))
+            self.assertIn("done", log_text(app))
 
     async def test_theme_switch_rebuilds_the_thought_process(self):
         app = ChaosApp(CFG, "p/m")
         async with app.run_test() as pilot:
-            with patch("chaos.agent.chat", return_value=Reply(text="ok", reasoning="thinking hard")):
+            with patch("chaos.agent.chat_stream", return_value=Reply(text="ok", reasoning="thinking hard")):
                 await type_and_submit(app, pilot, "hi")
             await type_and_submit(app, pilot, "/theme mono")
             self.assertEqual(len(app.query(ThoughtProcess)), 1)
@@ -126,7 +158,7 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
     async def test_error_is_shown_and_user_message_popped(self):
         app = ChaosApp(CFG, "p/m")
         async with app.run_test() as pilot:
-            with patch("chaos.agent.chat", side_effect=Exception("boom")):
+            with patch("chaos.agent.chat_stream", side_effect=Exception("boom")):
                 await type_and_submit(app, pilot, "hi")
             self.assertIn("error: boom", log_text(app))
             self.assertEqual([m["role"] for m in app.messages], ["system"])

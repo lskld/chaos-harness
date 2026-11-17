@@ -132,6 +132,29 @@ class ToolLoopTest(unittest.TestCase):
             self.assertEqual(seen[-1]["text"], "done")
             self.assertEqual([e["type"] for e in reply.events], ["tool_result"])
 
+    def test_stream_emits_reasoning_deltas_and_skips_duplicate_round(self):
+        messages = [{"role": "user", "content": "hi"}]
+        seen = []
+
+        def fake_stream(**kwargs):
+            kwargs["on_delta"]("reasoning", "think ")
+            kwargs["on_delta"]("reasoning", "hard")
+            return Reply(text="yo", reasoning="think hard")
+
+        with patch("chaos.agent.chat_stream", side_effect=fake_stream):
+            reply = respond(CFG, "p/m", messages, on_event=seen.append, stream=True)
+        self.assertEqual([e["type"] for e in seen], ["delta", "delta", "reply"])
+        self.assertEqual(seen[0], {"type": "delta", "field": "reasoning", "text": "think "})
+        self.assertEqual(reply.reasoning, "think hard")
+        self.assertEqual(reply.text, "yo")
+
+    def test_stream_without_reasoning_deltas_still_emits_round(self):
+        messages = [{"role": "user", "content": "hi"}]
+        seen = []
+        with patch("chaos.agent.chat_stream", return_value=Reply(text="yo", reasoning="hmm")):
+            respond(CFG, "p/m", messages, on_event=seen.append, stream=True)
+        self.assertEqual([e["type"] for e in seen], ["round", "reply"])
+
     def test_on_event_is_optional(self):
         messages = [{"role": "user", "content": "hi"}]
         with patch("chaos.agent.chat", return_value=Reply(text="yo")):

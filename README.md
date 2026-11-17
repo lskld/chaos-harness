@@ -52,10 +52,11 @@ current model and an evil fireball mascot top-right — while the model thinks i
 bobs up and down, cycles thinking faces, and shows a `thinking…` spinner line below
 it. Below that: a scrollable chat and an input line docked at the bottom. Each
 answer is preceded by a collapsed `▶ thought process` dropdown — click it to
-expand and watch the turn live: the model's reasoning when the provider returns
-it, every tool call as it is made (`⚒ edit_file … …` while running, then its
-result with a unified diff), streamed in real time; replies render as markdown
-below the dropdown.
+expand and watch the turn live: the model's reasoning streamed token by token
+(when the provider streams it), every tool call as it is made
+(`⚒ edit_file … …` while running, then its result with a unified diff);
+replies render as markdown below the dropdown. Streaming uses the API's
+`stream: true` SSE mode with a fallback to plain completions.
 Commands: `/help` (lists them all), `/exit` (or ctrl+q), `/clear`,
 `/model [provider/model]`, `/theme`.
 `/theme` opens a menu you navigate with ↑/↓ + enter (esc closes). Built-in themes:

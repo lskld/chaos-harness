@@ -25,12 +25,15 @@ workspace via function tools.
 - `src/chaos/themes.py` — the built-in color themes (`THEMES`, `DEFAULT_THEME_NAME="fire"`).
 - `src/chaos/config.py` — everything about `~/.chaos/config.json`: loading, example
   generation, theme selection/overrides, `provider/model` resolution.
-- `src/chaos/llm.py` — all HTTP: a single OpenAI-compatible `POST /chat/completions` call,
-  with optional `tools` in the payload and `tool_calls` parsed from the reply.
+- `src/chaos/llm.py` — all HTTP: a single OpenAI-compatible `POST /chat/completions` call
+  (`chat`), plus `chat_stream`, the same call with `stream: true` that parses SSE chunks,
+  reports them via `on_delta(field, text)` and accumulates a `Reply` (falls back to plain
+  parsing when the API does not return `text/event-stream`).
 - `src/chaos/agent.py` — the agent seam: `respond()` runs the tool loop (call model →
   execute tool calls → feed results back) until the model answers without tool calls.
-  Pass `on_event` to get typed events (`round` / `tool_call` / `tool_result` / `reply`)
-  as each step happens; without it, behavior is unchanged (events land in `Reply.events`).
+  Pass `on_event` to get typed events (`round` / `tool_call` / `tool_result` / `reply`,
+  plus `delta` chunks when `stream=True`) as each step happens; without it, behavior is
+  unchanged (events land in `Reply.events`, non-streaming `chat` is used).
 - `src/chaos/tools/` — the tool registry: `__init__.py` owns the `Tool` record,
   `schemas()`, `execute()`, and path confinement (`resolve_path`); `filetools.py`
   holds the file tools (`read_file`, `list_files`, `edit_file`, `write_file`).

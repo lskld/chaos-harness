@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 
 import requests
 
-from chaos.llm import LLMError, chat
+from chaos.llm import LLMError, chat, chat_stream
 
 
 def fake_response(status=200, payload=None, text=""):
@@ -158,6 +158,86 @@ class ChatTest(unittest.TestCase):
             reply = chat(base_url="https://api.example.com/v1", api_key="k", model="m", messages=[])
         self.assertEqual(reply.tool_calls, ())
         self.assertEqual(reply.events, ())
+
+
+def sse_response(lines, status=200, text=""):
+    response = Mock()
+    response.status_code = status
+    response.headers = {"Content-Type": "text/event-stream"}
+    response.iter_lines = lambda decode_unicode=False: iter(lines)
+    response.text = text
+    return response
+
+
+class ChatStreamTest(unittest.TestCase):
+    def test_streams_deltas_and_accumulates_reply(self):
+        lines = [
+            'data: {"choices": [{"delta": {"reasoning": "think "}}]}',
+            "",
+            'data: {"choices": [{"delta": {"reasoning_content": "hard"}}]}',
+            'data: {"choices": [{"delta": {"content": "hel"}}]}',
+            'data: {"choices": [{"delta": {"content": "lo"}}]}',
+            'data: {"choices": [{"delta": {"tool_calls": [{"index": 0, "id": "c1", "function": {"name": "read_file", "arguments": "{\\"path\\": "}}]}}]}',
+            'data: {"choices": [{"delta": {"tool_calls": [{"index": 0, "function": {"arguments": "\\"a.py\\"}"}}]}}]}',
+            "data: [DONE]",
+            'data: {"choices": [{"delta": {"content": "ignored after done"}}]}',
+        ]
+        deltas = []
+        with patch("chaos.llm.requests.post") as post:
+            post.return_value = sse_response(lines)
+            reply = chat_stream(
+                base_url="https://x/v1",
+                api_key="k",
+                model="m",
+                messages=[],
+                on_delta=lambda field, text: deltas.append((field, text)),
+            )
+        self.assertEqual(reply.text, "hello")
+        self.assertEqual(reply.reasoning, "think hard")
+        self.assertEqual(
+            reply.tool_calls,
+            (
+                {
+                    "id": "c1",
+                    "type": "function",
+                    "function": {"name": "read_file", "arguments": '{"path": "a.py"}'},
+                },
+            ),
+        )
+        self.assertEqual(
+            deltas,
+            [("reasoning", "think "), ("reasoning", "hard"), ("content", "hel"), ("content", "lo")],
+        )
+        self.assertTrue(post.call_args.kwargs["json"]["stream"])
+        self.assertTrue(post.call_args.kwargs["stream"])
+
+    def test_non_sse_response_falls_back_to_plain_parsing(self):
+        with patch("chaos.llm.requests.post") as post:
+            response = fake_response(payload=payload(content="hi", reasoning="hmm"))
+            response.headers = {"Content-Type": "application/json"}
+            post.return_value = response
+            reply = chat_stream(base_url="https://x/v1", api_key="k", model="m", messages=[])
+        self.assertEqual(reply.text, "hi")
+        self.assertEqual(reply.reasoning, "hmm")
+
+    def test_http_error_raises_llm_error(self):
+        with patch("chaos.llm.requests.post") as post:
+            post.return_value = sse_response([], status=500, text="boom")
+            with self.assertRaises(LLMError) as ctx:
+                chat_stream(base_url="https://x/v1", api_key="k", model="m", messages=[])
+        self.assertIn("500", str(ctx.exception))
+
+    def test_network_error_raises_llm_error(self):
+        with patch("chaos.llm.requests.post", side_effect=requests.ConnectionError("down")):
+            with self.assertRaises(LLMError):
+                chat_stream(base_url="https://x/v1", api_key="k", model="m", messages=[])
+
+    def test_malformed_sse_lines_are_skipped(self):
+        lines = ["data: not json", 'data: {"unexpected": 1}', 'data: {"choices": [{"delta": {"content": "ok"}}]}', "data: [DONE]"]
+        with patch("chaos.llm.requests.post") as post:
+            post.return_value = sse_response(lines)
+            reply = chat_stream(base_url="https://x/v1", api_key="k", model="m", messages=[])
+        self.assertEqual(reply.text, "ok")
 
 
 if __name__ == "__main__":

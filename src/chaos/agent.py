@@ -4,7 +4,7 @@ from pathlib import Path
 
 from . import config as config_mod
 from . import tools as tools_mod
-from .llm import Reply, chat
+from .llm import Reply, chat, chat_stream
 
 SYSTEM_PROMPT = (
     "You are CHAOS, a hackathon agent. The user's project is the workspace rooted at {root}. "
@@ -34,12 +34,13 @@ def _parsed_arguments(raw):
     return parsed if isinstance(parsed, dict) else raw
 
 
-def respond(cfg, ref, messages, on_event=None):
+def respond(cfg, ref, messages, on_event=None, stream=False):
     """One agent turn: run the tool loop until the model answers without tool calls.
 
     If on_event is given, it is called with a typed event as each step happens:
     {"type": "round", "reasoning": ...}, {"type": "tool_call", ...},
-    {"type": "tool_result", ...} and {"type": "reply", "text": ...}.
+    {"type": "tool_result", ...} and {"type": "reply", "text": ...}; with stream=True
+    it also gets {"type": "delta", "field": "content"|"reasoning", "text": ...} per chunk.
     """
     base_url, api_key, model = config_mod.resolve(cfg, ref)
     ctx = _context(cfg)
@@ -53,14 +54,29 @@ def respond(cfg, ref, messages, on_event=None):
             on_event(event)
 
     for _ in range(max_rounds):
-        reply = chat(
-            base_url=base_url,
-            api_key=api_key,
-            model=model,
-            messages=messages,
-            tools=tools_mod.schemas(),
-        )
-        if reply.reasoning:
+        streamed_fields = []
+        if stream:
+            def on_delta(field, text):
+                streamed_fields.append(field)
+                emit({"type": "delta", "field": field, "text": text})
+
+            reply = chat_stream(
+                base_url=base_url,
+                api_key=api_key,
+                model=model,
+                messages=messages,
+                tools=tools_mod.schemas(),
+                on_delta=on_delta,
+            )
+        else:
+            reply = chat(
+                base_url=base_url,
+                api_key=api_key,
+                model=model,
+                messages=messages,
+                tools=tools_mod.schemas(),
+            )
+        if reply.reasoning and "reasoning" not in streamed_fields:
             emit({"type": "round", "reasoning": reply.reasoning})
         if not reply.tool_calls:
             messages.append({"role": "assistant", "content": reply.text})

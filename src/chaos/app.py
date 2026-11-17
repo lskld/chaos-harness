@@ -7,7 +7,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Collapsible, Input, RichLog, SelectionList, Static
+from textual.widgets import Collapsible, Input, SelectionList, Static
 from textual.widgets.selection_list import Selection
 
 from . import commands
@@ -87,24 +87,59 @@ class ModelPicker(ListPicker):
 class ThoughtProcess(Collapsible):
     """One turn's live event stream behind a collapsed 'thought process' dropdown."""
 
+    MAX_BLOCKS = 400
+
     def __init__(self, theme, events):
-        inner = RichLog(classes="process-log", max_lines=400)
-        inner.styles.color = _hex_color(theme["thinking"], "#c4a3a3")
+        log = VerticalScroll(classes="process-log")
+        log.styles.color = _hex_color(theme["thinking"], "#c4a3a3")
         title = Text("thought process", style=theme["thinking"])
-        super().__init__(inner, title=title, collapsed=True, classes="process")
+        super().__init__(log, title=title, collapsed=True, classes="process")
         self.events = events
-        self._inner = inner
+        self._log = log
+        self._live = None
+        self._pending = []
         for event in events:
             self._write_event(theme, event)
+
+    def on_mount(self):
+        for block in self._pending:
+            self._log.mount(block)
+        self._pending.clear()
+        while len(self._log.children) > self.MAX_BLOCKS:
+            self._log.children[0].remove()
 
     def add_event(self, theme, event):
         self.events.append(event)
         self._write_event(theme, event)
 
     def _write_event(self, theme, event):
+        if event.get("type") == "delta":
+            self._append_delta(theme, event.get("field", ""), event.get("text", ""))
+            return
+        self._live = None
         rendered = ui.render_event(theme, event)
         if rendered is not None:
-            self._inner.write(rendered)
+            self._mount_block(rendered)
+
+    def _append_delta(self, theme, field, text):
+        if field != "reasoning" or not text:
+            return
+        if self._live is None:
+            self._mount_block(Static(Text("thinking", style=theme["thinking"])))
+            self._live = Static(Text("", style=theme["thinking"]))
+            self._mount_block(self._live)
+        body = self._live.content
+        body.append(text)
+        self._live.update(body)
+
+    def _mount_block(self, renderable):
+        block = renderable if isinstance(renderable, Static) else Static(renderable)
+        if self._log.is_mounted:
+            self._log.mount(block)
+            if len(self._log.children) > self.MAX_BLOCKS:
+                self._log.children[0].remove()
+        else:
+            self._pending.append(block)
 
 
 class ChaosApp(App):
@@ -325,7 +360,7 @@ class ChaosApp(App):
             self.call_from_thread(self._add_process_event, process, event)
 
         try:
-            reply = respond(self.cfg, self.ref, self.messages, on_event=on_event)
+            reply = respond(self.cfg, self.ref, self.messages, on_event=on_event, stream=True)
         except Exception as exc:
             self.call_from_thread(self._fail, exc)
             return
