@@ -98,6 +98,44 @@ class ToolLoopTest(unittest.TestCase):
             self.assertIn('"ok": false', messages[3]["content"])
             self.assertFalse(reply.events[0]["result"]["ok"])
 
+    def test_on_event_receives_typed_events_in_order(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg = {**CFG, "workspace_root": d}
+            Path(d, "f.txt").write_text("hello\n", encoding="utf-8")
+            messages = [{"role": "user", "content": "change f.txt"}]
+            call = {
+                "id": "1",
+                "type": "function",
+                "function": {
+                    "name": "edit_file",
+                    "arguments": json.dumps({"path": "f.txt", "old_str": "hello", "new_str": "bye"}),
+                },
+            }
+            calls = [
+                Reply(text="", reasoning="planning", tool_calls=(call,)),
+                Reply(text="done", reasoning="wrapped up"),
+            ]
+            seen = []
+            with patch("chaos.agent.chat", side_effect=calls):
+                reply = respond(cfg, "p/m", messages, on_event=seen.append)
+            self.assertEqual(
+                [e["type"] for e in seen],
+                ["round", "tool_call", "tool_result", "round", "reply"],
+            )
+            self.assertEqual(seen[0]["reasoning"], "planning")
+            self.assertEqual(seen[1]["tool"], "edit_file")
+            self.assertEqual(seen[1]["arguments"]["path"], "f.txt")
+            self.assertEqual(seen[2]["tool"], "edit_file")
+            self.assertTrue(seen[2]["result"]["ok"])
+            self.assertEqual(seen[-1]["text"], "done")
+            self.assertEqual([e["type"] for e in reply.events], ["tool_result"])
+
+    def test_on_event_is_optional(self):
+        messages = [{"role": "user", "content": "hi"}]
+        with patch("chaos.agent.chat", return_value=Reply(text="yo")):
+            reply = respond(CFG, "p/m", messages)
+        self.assertEqual(reply.text, "yo")
+
     def test_tool_round_limit_stops_the_loop(self):
         with tempfile.TemporaryDirectory() as d:
             cfg = {**CFG, "workspace_root": d, "max_tool_rounds": 2}
