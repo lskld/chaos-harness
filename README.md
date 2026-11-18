@@ -26,17 +26,7 @@ The file is provider-agnostic: any API with an OpenAI-compatible
       "models": []
     }
   },
-  "theme": {
-    "background": "#1a0d0a",
-    "banner": "bold #ffc94d",
-    "mascot": "bold #ff5f6d",
-    "prompt": "#ff87a2",
-    "user": "#fff3e8",
-    "assistant": "#ffd76a",
-    "error": "bold #ff4040",
-    "info": "#c4a3a3",
-    "thinking": "italic #c4a3a3"
-  }
+  "theme_name": "fire"
 }
 ```
 
@@ -44,8 +34,10 @@ Fill in one `providers` block per API you want to use: `base_url` is the API
 root, `api_key` its key, `models` the model IDs it serves. Set `default_model`
 to `"my-provider/<model-id>"`, or pick a model per run with `--model
 provider/model` or the `/model` command inside the CLI. Adding a provider block
-makes all of its models available immediately. Colors are customizable via the
-`theme` block.
+makes all of its models available immediately. Pick a color theme with
+`"theme_name"` (`fire`, `ocean`, `forest`, `sunset`, `mono` — or `/theme` in the
+CLI); to customize individual colors, add an optional `theme` block that
+overrides keys of the selected preset.
 
 `chaos` takes over the whole terminal (alternate screen): a top bar with the
 current model and an evil fireball mascot top-right — while the model thinks it
