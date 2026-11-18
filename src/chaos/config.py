@@ -18,7 +18,7 @@ EXAMPLE_CONFIG = {
             "models": [],
         }
     },
-    "theme": DEFAULT_THEME,
+    "theme_name": DEFAULT_THEME_NAME,
 }
 
 

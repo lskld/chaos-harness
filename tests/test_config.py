@@ -40,6 +40,16 @@ class ConfigTest(unittest.TestCase):
             data = json.loads(path.read_text(encoding="utf-8"))
             self.assertIn("providers", data)
 
+    def test_example_config_uses_theme_name_not_a_filled_theme_block(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "sub" / "config.json"
+            with self.assertRaises(config_mod.ConfigError):
+                config_mod.load(path)
+            data = json.loads(path.read_text(encoding="utf-8"))
+        self.assertNotIn("theme", data)
+        self.assertEqual(data["theme_name"], config_mod.DEFAULT_THEME_NAME)
+        self.assertEqual(config_mod.theme(data, "ocean")["background"], "#0a1420")
+
     def test_example_config_is_written_owner_only(self):
         with tempfile.TemporaryDirectory() as d:
             path = Path(d) / "sub" / "config.json"
