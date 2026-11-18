@@ -3,6 +3,8 @@ from typing import NamedTuple
 
 import requests
 
+from . import config as config_mod
+
 
 class LLMError(Exception):
     pass
@@ -28,13 +30,19 @@ def chat(*, base_url, api_key, model, messages, tools=None, timeout=120):
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=timeout)
     except requests.RequestException as exc:
-        raise LLMError(f"request to {url} failed: {type(exc).__name__}: {str(exc)[:200]}") from exc
+        raise LLMError(
+            config_mod.redact(f"request to {url} failed: {type(exc).__name__}: {str(exc)[:200]}", (api_key,))
+        ) from exc
     if response.status_code != 200:
-        raise LLMError(f"API error {response.status_code} from {url}: {response.text[:300]}")
+        raise LLMError(
+            config_mod.redact(f"API error {response.status_code} from {url}: {response.text[:300]}", (api_key,))
+        )
     try:
         message = response.json()["choices"][0]["message"]
     except (KeyError, IndexError, TypeError, ValueError) as exc:
-        raise LLMError(f"unexpected response from {url}: {exc}") from exc
+        raise LLMError(
+            config_mod.redact(f"unexpected response from {url}: {exc}", (api_key,))
+        ) from exc
     return Reply(
         text=_content_text(message.get("content")),
         reasoning=_reasoning_text(message),
@@ -59,14 +67,20 @@ def chat_stream(*, base_url, api_key, model, messages, tools=None, timeout=120, 
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=timeout, stream=True)
     except requests.RequestException as exc:
-        raise LLMError(f"request to {url} failed: {type(exc).__name__}: {str(exc)[:200]}") from exc
+        raise LLMError(
+            config_mod.redact(f"request to {url} failed: {type(exc).__name__}: {str(exc)[:200]}", (api_key,))
+        ) from exc
     if response.status_code != 200:
-        raise LLMError(f"API error {response.status_code} from {url}: {response.text[:300]}")
+        raise LLMError(
+            config_mod.redact(f"API error {response.status_code} from {url}: {response.text[:300]}", (api_key,))
+        )
     if "text/event-stream" not in response.headers.get("Content-Type", ""):
         try:
             message = response.json()["choices"][0]["message"]
         except (KeyError, IndexError, TypeError, ValueError) as exc:
-            raise LLMError(f"unexpected response from {url}: {exc}") from exc
+            raise LLMError(
+            config_mod.redact(f"unexpected response from {url}: {exc}", (api_key,))
+        ) from exc
         return Reply(
             text=_content_text(message.get("content")),
             reasoning=_reasoning_text(message),

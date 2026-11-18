@@ -81,3 +81,36 @@ def resolve(config, ref):
         return provider["base_url"], provider["api_key"], model
     except KeyError as exc:
         raise ConfigError(f"provider {provider_name!r} is missing {exc} in config") from exc
+
+
+REDACTED = "***redacted***"
+SECRET_KEYS = ("api_key", "api_secret", "access_token")
+MIN_SECRET_LENGTH = 8
+
+
+def secrets(config):
+    """All configured secret values (provider API keys, future search keys, ...)."""
+    found = []
+
+    def walk(node):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key in SECRET_KEYS and isinstance(value, str) and value:
+                    found.append(value)
+                else:
+                    walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(config)
+    return tuple(dict.fromkeys(found))
+
+
+def redact(text, secrets):
+    """Replace secret values in text. Very short values are skipped so a weak
+    key can't mangle all output."""
+    for secret in secrets:
+        if len(secret) >= MIN_SECRET_LENGTH:
+            text = text.replace(secret, REDACTED)
+    return text

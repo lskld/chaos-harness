@@ -97,5 +97,28 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(config_mod.theme(cfg)["background"], "#111111")
 
 
+    def test_secrets_collects_api_keys_recursively(self):
+        cfg = {
+            "providers": {
+                "p": {"api_key": "sk-aaaabbbb1111"},
+                "q": {"api_key": "sk-ccccdddd2222"},
+            },
+            "search": {"api_key": "sk-eeeeffff3333"},
+            "default_model": "p/m",
+        }
+        self.assertEqual(
+            sorted(config_mod.secrets(cfg)),
+            ["sk-aaaabbbb1111", "sk-ccccdddd2222", "sk-eeeeffff3333"],
+        )
+        self.assertEqual(config_mod.secrets(SAMPLE), ("sk-test", "gsk-test"))
+
+    def test_redact_replaces_long_secrets_and_skips_short_ones(self):
+        self.assertEqual(
+            config_mod.redact("key sk-aaaabbbb1111 here", ("sk-aaaabbbb1111",)),
+            "key ***redacted*** here",
+        )
+        self.assertEqual(config_mod.redact("abc abc", ("abc",)), "abc abc")
+
+
 if __name__ == "__main__":
     unittest.main()

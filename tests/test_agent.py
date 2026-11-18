@@ -8,6 +8,9 @@ from chaos.agent import respond
 from chaos.llm import Reply
 
 CFG = {"providers": {"p": {"base_url": "https://x/v1", "api_key": "k", "models": ["m"]}}}
+CFG_SECRET = {
+    "providers": {"p": {"base_url": "https://x/v1", "api_key": "sk-live-abcdef123456", "models": ["m"]}}
+}
 
 
 class RespondTest(unittest.TestCase):
@@ -174,6 +177,49 @@ class ToolLoopTest(unittest.TestCase):
         with patch("chaos.agent.chat_stream", return_value=Reply(text="yo", reasoning="hmm")):
             respond(CFG, "p/m", messages, on_event=seen.append, stream=True)
         self.assertEqual([e["type"] for e in seen], ["round", "reply"])
+
+    def test_reply_text_and_reasoning_are_redacted(self):
+        messages = [{"role": "user", "content": "hi"}]
+        seen = []
+        with patch(
+            "chaos.agent.chat",
+            return_value=Reply(text="key sk-live-abcdef123456", reasoning="sk-live-abcdef123456"),
+        ):
+            reply = respond(CFG_SECRET, "p/m", messages, on_event=seen.append)
+        self.assertEqual(reply.text, "key ***redacted***")
+        self.assertEqual(reply.reasoning, "***redacted***")
+        self.assertEqual(messages[-1]["content"], "key ***redacted***")
+        self.assertNotIn("sk-live-abcdef123456", str(seen))
+
+    def test_streamed_deltas_are_redacted(self):
+        messages = [{"role": "user", "content": "hi"}]
+        seen = []
+
+        def fake_stream(**kwargs):
+            kwargs["on_delta"]("content", "sk-live-abcdef123456")
+            return Reply(text="sk-live-abcdef123456")
+
+        with patch("chaos.agent.chat_stream", side_effect=fake_stream):
+            reply = respond(CFG_SECRET, "p/m", messages, on_event=seen.append, stream=True)
+        self.assertEqual(seen[0]["text"], "***redacted***")
+        self.assertEqual(reply.text, "***redacted***")
+
+    def test_tool_results_are_redacted_with_configured_secrets(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg = {**CFG_SECRET, "workspace_root": d}
+            Path(d, "f.txt").write_text("sk-live-abcdef123456\n", encoding="utf-8")
+            messages = [{"role": "user", "content": "read f.txt"}]
+            call = {
+                "id": "1",
+                "type": "function",
+                "function": {"name": "read_file", "arguments": json.dumps({"path": "f.txt"})},
+            }
+            calls = [Reply(text="", tool_calls=(call,)), Reply(text="done")]
+            with patch("chaos.agent.chat", side_effect=calls):
+                reply = respond(cfg, "p/m", messages)
+            self.assertNotIn("sk-live-abcdef123456", messages[3]["content"])
+            self.assertIn("***redacted***", messages[3]["content"])
+            self.assertNotIn("sk-live-abcdef123456", reply.events[0]["result"]["content"])
 
     def test_on_event_is_optional(self):
         messages = [{"role": "user", "content": "hi"}]
