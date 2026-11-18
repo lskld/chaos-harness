@@ -3,6 +3,8 @@ import os
 from pathlib import Path
 from typing import Callable, NamedTuple
 
+from .. import config as config_mod
+
 DEFAULT_MAX_FILE_BYTES = 200_000
 DEFAULT_MAX_RESULT_BYTES = 20_000
 DEFAULT_MAX_TOOL_ROUNDS = 10
@@ -18,6 +20,7 @@ class ToolContext(NamedTuple):
     root: Path
     max_file_bytes: int = DEFAULT_MAX_FILE_BYTES
     max_result_bytes: int = DEFAULT_MAX_RESULT_BYTES
+    secrets: tuple = ()
 
 
 class Tool(NamedTuple):
@@ -123,26 +126,30 @@ def schemas():
 
 
 def execute(name, arguments, ctx):
-    """Run one tool call; always returns a JSON string (ok or error) for the tool message."""
+    """Run one tool call; always returns a JSON string (ok or error) for the tool message.
+    Configured secrets are redacted from the result before it leaves the tool layer."""
+    def out(payload):
+        return config_mod.redact(json.dumps(payload), ctx.secrets)
+
     tool = _BY_NAME.get(name)
     if tool is None:
-        return json.dumps({"ok": False, "error": f"unknown tool {name!r}"})
+        return out({"ok": False, "error": f"unknown tool {name!r}"})
     if isinstance(arguments, str):
         try:
             args = json.loads(arguments)
         except json.JSONDecodeError as exc:
-            return json.dumps({"ok": False, "error": f"invalid JSON arguments for {name}: {exc}"})
+            return out({"ok": False, "error": f"invalid JSON arguments for {name}: {exc}"})
     else:
         args = arguments
     if not isinstance(args, dict):
-        return json.dumps({"ok": False, "error": f"arguments for {name} must be a JSON object"})
+        return out({"ok": False, "error": f"arguments for {name} must be a JSON object"})
     try:
         result = tool.handler(args, ctx)
     except ToolError as exc:
-        return json.dumps({"ok": False, "error": str(exc)})
+        return out({"ok": False, "error": str(exc)})
     except Exception as exc:
-        return json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
-    text = json.dumps(result)
+        return out({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+    text = out(result)
     if len(text) > ctx.max_result_bytes:
         overflow = len(text) - ctx.max_result_bytes
         text = text[: ctx.max_result_bytes] + f'... [truncated, {overflow} more bytes]'

@@ -50,6 +50,20 @@ class ChatTest(unittest.TestCase):
                 chat(base_url="https://api.example.com/v1", api_key="bad", model="m", messages=[])
         self.assertIn("401", str(ctx.exception))
 
+    def test_http_error_redacts_api_key_from_response_text(self):
+        with patch("chaos.llm.requests.post") as post:
+            post.return_value = fake_response(status=500, text='echo "sk-live-abcdef123456"')
+            with self.assertRaises(LLMError) as ctx:
+                chat(
+                    base_url="https://api.example.com/v1",
+                    api_key="sk-live-abcdef123456",
+                    model="m",
+                    messages=[],
+                )
+        self.assertIn("500", str(ctx.exception))
+        self.assertNotIn("sk-live-abcdef123456", str(ctx.exception))
+        self.assertIn("***redacted***", str(ctx.exception))
+
     def test_network_error_raises_llm_error(self):
         with patch("chaos.llm.requests.post", side_effect=requests.ConnectionError("down")):
             with self.assertRaises(LLMError):

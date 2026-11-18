@@ -55,6 +55,30 @@ class RegistryTest(unittest.TestCase):
         finally:
             del tools._BY_NAME["boom"]
 
+    def test_execute_redacts_secrets_from_results(self):
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "f.txt").write_text("token sk-aaaabbbb1111 leaked", encoding="utf-8")
+            ctx = ToolContext(root=Path(d), secrets=("sk-aaaabbbb1111",))
+            result = json.loads(execute("read_file", json.dumps({"path": "f.txt"}), ctx))
+        self.assertTrue(result["ok"])
+        self.assertNotIn("sk-aaaabbbb1111", result["content"])
+        self.assertIn("***redacted***", result["content"])
+
+    def test_execute_redacts_secrets_from_error_messages(self):
+        def handler(args, ctx):
+            raise RuntimeError("boom sk-aaaabbbb1111")
+
+        tools._BY_NAME["leak"] = tools.Tool("leak", "", {}, handler)
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                ctx = ToolContext(root=Path(d), secrets=("sk-aaaabbbb1111",))
+                result = json.loads(execute("leak", "{}", ctx))
+            self.assertFalse(result["ok"])
+            self.assertNotIn("sk-aaaabbbb1111", result["error"])
+            self.assertIn("***redacted***", result["error"])
+        finally:
+            del tools._BY_NAME["leak"]
+
     def test_execute_truncates_oversized_results(self):
         with tempfile.TemporaryDirectory() as d:
             (Path(d) / "big.txt").write_text("x" * 5000, encoding="utf-8")

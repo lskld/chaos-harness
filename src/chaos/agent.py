@@ -24,6 +24,7 @@ def _context(cfg):
         root=tools_mod.workspace_root(cfg),
         max_file_bytes=int(cfg.get("max_file_bytes", tools_mod.DEFAULT_MAX_FILE_BYTES)),
         max_result_bytes=int(cfg.get("max_result_bytes", tools_mod.DEFAULT_MAX_RESULT_BYTES)),
+        secrets=config_mod.secrets(cfg),
     )
 
 
@@ -60,7 +61,7 @@ def respond(cfg, ref, messages, on_event=None, stream=False):
         if stream:
             def on_delta(field, text):
                 streamed_fields.append(field)
-                emit({"type": "delta", "field": field, "text": text})
+                emit({"type": "delta", "field": field, "text": config_mod.redact(text, ctx.secrets)})
 
             reply = chat_stream(
                 base_url=base_url,
@@ -78,6 +79,10 @@ def respond(cfg, ref, messages, on_event=None, stream=False):
                 messages=messages,
                 tools=tools_mod.schemas(),
             )
+        reply = reply._replace(
+            text=config_mod.redact(reply.text, ctx.secrets),
+            reasoning=config_mod.redact(reply.reasoning, ctx.secrets),
+        )
         round_event = {"type": "round"}
         if reply.reasoning and "reasoning" not in streamed_fields:
             round_event["reasoning"] = reply.reasoning
