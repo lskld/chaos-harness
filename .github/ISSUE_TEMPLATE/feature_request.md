@@ -1,8 +1,10 @@
 ---
 name: Feature request
-description: Suggest a new feature or improvement
-title: '[feat]: '
+about: a feature request
+title: "[feat]: "
 labels: enhancement
+assignees: ''
+
 ---
 
 ## What would you like?
