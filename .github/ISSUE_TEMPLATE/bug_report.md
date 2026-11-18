@@ -1,8 +1,10 @@
 ---
 name: Bug report
-description: Something isn't working
-title: '[bug]: '
-labels: bug
+about: report a bug or issue
+title: "[bug]: "
+labels: bug, enhancement
+assignees: lskld
+
 ---
 
 ## What happened?
@@ -22,4 +24,4 @@ labels: bug
 
 ## Logs / extra context
 
-<!-- Paste the exact command and any output with ``` fences -->
+<!-- Paste the exact command and any output with ``` fences. -->
