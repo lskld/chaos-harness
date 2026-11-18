@@ -1,4 +1,6 @@
 import json
+import os
+import stat
 from pathlib import Path
 
 from .themes import DEFAULT_THEME_NAME, THEMES
@@ -24,14 +26,31 @@ class ConfigError(Exception):
     pass
 
 
+def _write_private(path, text):
+    """Write the config so only the owner can read it — it holds API keys."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(text)
+    os.chmod(path, 0o600)
+
+
+def _tighten_permissions(path):
+    try:
+        if stat.S_IMODE(os.stat(path).st_mode) & 0o077:
+            os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
 def load(path=DEFAULT_CONFIG_PATH):
     path = Path(path)
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(EXAMPLE_CONFIG, indent=2) + "\n", encoding="utf-8")
+        _write_private(path, json.dumps(EXAMPLE_CONFIG, indent=2) + "\n")
         raise ConfigError(
             f"no config found — wrote an example to {path}; fill in a provider, then run again"
         )
+    _tighten_permissions(path)
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
@@ -40,7 +59,7 @@ def load(path=DEFAULT_CONFIG_PATH):
 
 def save(path, config):
     path = Path(path)
-    path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+    _write_private(path, json.dumps(config, indent=2) + "\n")
 
 
 def theme(config, name=None):

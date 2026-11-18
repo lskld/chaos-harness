@@ -3,7 +3,7 @@ import fnmatch
 import os
 from pathlib import Path
 
-from . import Tool, ToolContext, ToolError, display_path, resolve_path
+from . import PROTECTED_DIRS, Tool, ToolContext, ToolError, display_path, open_checked, resolve_path
 
 LIST_EXCLUDED_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv"}
 LIST_MAX_ENTRIES = 500
@@ -72,8 +72,10 @@ WRITE_FILE_PARAMETERS = {
 
 
 def _read_text(ctx, path):
+    fd = open_checked(ctx, path, os.O_RDONLY)
     try:
-        raw = path.read_bytes()
+        with os.fdopen(fd, "rb") as handle:
+            raw = handle.read()
     except OSError as exc:
         raise ToolError(f"cannot read {display_path(ctx, path)}: {exc.strerror or exc}") from exc
     if b"\0" in raw[:8192]:
@@ -82,6 +84,15 @@ def _read_text(ctx, path):
         return raw.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise ToolError(f"{display_path(ctx, path)} is not valid UTF-8 text: {exc}") from exc
+
+
+def _write_text(ctx, path, text):
+    fd = open_checked(ctx, path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+    except OSError as exc:
+        raise ToolError(f"cannot write {display_path(ctx, path)}: {exc.strerror or exc}") from exc
 
 
 def _check_size(ctx, path, size):
@@ -143,7 +154,9 @@ def list_files(args, ctx: ToolContext):
     root = ctx.root.resolve()
     matches = []
     for dirpath, dirnames, filenames in os.walk(base):
-        dirnames[:] = sorted(d for d in dirnames if d not in LIST_EXCLUDED_DIRS)
+        dirnames[:] = sorted(
+            d for d in dirnames if d not in LIST_EXCLUDED_DIRS and d not in PROTECTED_DIRS
+        )
         for filename in sorted(filenames):
             full = Path(dirpath) / filename
             rel = full.relative_to(root).as_posix()
@@ -181,7 +194,7 @@ def edit_file(args, ctx: ToolContext):
             f"old_str matches {count} times in {display_path(ctx, path)} — include more surrounding context"
         )
     new_text = text.replace(old_str, new_str, 1)
-    path.write_text(new_text, encoding="utf-8")
+    _write_text(ctx, path, new_text)
     return {
         "ok": True,
         "path": display_path(ctx, path),
@@ -208,7 +221,7 @@ def write_file(args, ctx: ToolContext):
     _check_size(ctx, path, size)
     old = _read_text(ctx, path) if existed else ""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+    _write_text(ctx, path, content)
     result = {
         "ok": True,
         "path": display_path(ctx, path),
