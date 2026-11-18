@@ -1,6 +1,5 @@
 import os
 from itertools import cycle
-from pathlib import Path
 
 from rich.style import Style
 from rich.text import Text
@@ -14,6 +13,7 @@ from textual.widgets.selection_list import Selection
 
 from . import commands
 from . import config as config_mod
+from . import tools as tools_mod
 from . import ui
 from .agent import respond
 
@@ -193,7 +193,7 @@ class ChaosApp(App):
         self.theme_name = cfg.get("theme_name") or config_mod.DEFAULT_THEME_NAME
         self.ui_theme = config_mod.theme(cfg, self.theme_name)
         self.messages = []
-        self.workspace_root = Path(cfg.get("workspace_root") or os.getcwd()).resolve()
+        self.workspace_root = tools_mod.workspace_root(cfg)
         self._log_items = []
         self._spinner_on = False
         self._spinner_frames = cycle("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
@@ -228,6 +228,11 @@ class ChaosApp(App):
         self._apply_theme()
         self.set_interval(0.12, self._tick)
         self.query_one("#input", Input).focus()
+        warning = tools_mod.root_warning(
+            self.workspace_root, self.config_path or str(config_mod.DEFAULT_CONFIG_PATH)
+        )
+        if warning:
+            self._log("error", f"warning: {warning}")
 
     def _apply_theme(self):
         theme = self.ui_theme

@@ -63,6 +63,27 @@ class FileToolsTest(unittest.TestCase):
         result = self.call("list_files", {"path": ".", "pattern": "*.py"})
         self.assertEqual(result["files"], ["src/a.py"])
 
+    def test_protected_dirs_are_refused_by_all_file_tools(self):
+        (self.root / ".ssh").mkdir()
+        (self.root / ".ssh" / "id_rsa").write_text("key", encoding="utf-8")
+        result = self.call("read_file", {"path": ".ssh/id_rsa"})
+        self.assertFalse(result["ok"])
+        self.assertIn("protected directory", result["error"])
+        result = self.call("edit_file", {"path": ".ssh/id_rsa", "old_str": "key", "new_str": "x"})
+        self.assertFalse(result["ok"])
+        self.assertIn("protected directory", result["error"])
+        result = self.call("write_file", {"path": ".chaos/config.json", "content": "{}"})
+        self.assertFalse(result["ok"])
+        self.assertIn("protected directory", result["error"])
+        self.assertFalse((self.root / ".chaos").exists())
+
+    def test_list_files_skips_protected_dirs(self):
+        (self.root / ".ssh").mkdir()
+        (self.root / ".ssh" / "id_rsa").write_text("key", encoding="utf-8")
+        result = self.call("list_files", {"path": "."})
+        self.assertTrue(result["ok"])
+        self.assertNotIn(".ssh/id_rsa", result["files"])
+
     def test_list_files_skips_vcs_and_cache_dirs(self):
         (self.root / ".git").mkdir()
         (self.root / ".git" / "HEAD").write_text("ref", encoding="utf-8")

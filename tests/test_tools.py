@@ -1,10 +1,12 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from chaos import tools
-from chaos.tools import ToolContext, ToolError, execute, resolve_path, schemas
+from chaos.tools import ToolContext, ToolError, execute, open_checked, resolve_path, schemas
 
 
 class RegistryTest(unittest.TestCase):
@@ -96,6 +98,141 @@ class ResolvePathTest(unittest.TestCase):
             ctx = ToolContext(root=Path(d))
             with self.assertRaises(ToolError):
                 resolve_path(ctx, "   ")
+
+    def test_protected_dirs_are_refused_regardless_of_root(self):
+        with tempfile.TemporaryDirectory() as d:
+            ctx = ToolContext(root=Path(d))
+            for raw in (".chaos/config.json", ".ssh/id_rsa", ".aws/credentials", "sub/.gnupg/gpg.conf"):
+                with self.assertRaises(ToolError) as cm:
+                    resolve_path(ctx, raw)
+                self.assertIn("protected directory", str(cm.exception))
+
+    def test_other_dot_directories_are_allowed(self):
+        with tempfile.TemporaryDirectory() as d:
+            ctx = ToolContext(root=Path(d))
+            resolved = resolve_path(ctx, ".github/workflows/ci.yml")
+            self.assertEqual(resolved, (Path(d) / ".github" / "workflows" / "ci.yml").resolve())
+
+
+class WorkspaceRootTest(unittest.TestCase):
+    def test_workspace_root_defaults_to_cwd(self):
+        with tempfile.TemporaryDirectory() as d:
+            with patch("os.getcwd", return_value=d):
+                self.assertEqual(tools.workspace_root({}), Path(d).resolve())
+
+    def test_workspace_root_comes_from_config(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(
+                tools.workspace_root({"workspace_root": str(Path(d) / "proj")}),
+                (Path(d) / "proj").resolve(),
+            )
+
+    def test_root_warning_when_root_is_home(self):
+        with tempfile.TemporaryDirectory() as d:
+            home = Path(d) / "home"
+            with patch("pathlib.Path.home", return_value=home):
+                warning = tools.root_warning(home, home / ".chaos" / "config.json")
+            self.assertIsNotNone(warning)
+            self.assertIn(str(home), warning)
+            self.assertIn("workspace_root", warning)
+
+    def test_root_warning_when_root_is_an_ancestor_of_home(self):
+        with tempfile.TemporaryDirectory() as d:
+            home = Path(d) / "home"
+            with patch("pathlib.Path.home", return_value=home):
+                warning = tools.root_warning(Path(d), home / ".chaos" / "config.json")
+            self.assertIsNotNone(warning)
+
+    def test_root_warning_when_config_dir_is_inside_root(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / "proj"
+            with patch("pathlib.Path.home", return_value=Path(d) / "home"):
+                warning = tools.root_warning(root, root / ".chaos" / "config.json")
+            self.assertIsNotNone(warning)
+
+    def test_no_warning_for_a_plain_project_root(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / "proj"
+            with patch("pathlib.Path.home", return_value=Path(d) / "home"):
+                warning = tools.root_warning(root, Path(d) / "home" / ".chaos" / "config.json")
+            self.assertIsNone(warning)
+
+
+class OpenCheckedTest(unittest.TestCase):
+    def test_opens_a_normal_file_inside_the_root(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / "root"
+            root.mkdir()
+            target = root / "f.txt"
+            target.write_text("ok", encoding="utf-8")
+            ctx = ToolContext(root=root)
+            fd = open_checked(ctx, target, os.O_RDONLY)
+            with os.fdopen(fd, "r", encoding="utf-8") as handle:
+                self.assertEqual(handle.read(), "ok")
+
+    def test_refuses_path_outside_root(self):
+        with tempfile.TemporaryDirectory() as d:
+            ctx = ToolContext(root=Path(d) / "root")
+            with self.assertRaises(ToolError) as cm:
+                open_checked(ctx, Path(d) / "outside.txt", os.O_RDONLY)
+            self.assertIn("outside the workspace root", str(cm.exception))
+
+    def test_refuses_protected_dir(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / "root"
+            (root / ".ssh").mkdir(parents=True)
+            target = root / ".ssh" / "id_rsa"
+            target.write_text("key", encoding="utf-8")
+            ctx = ToolContext(root=root)
+            with self.assertRaises(ToolError) as cm:
+                open_checked(ctx, target, os.O_RDONLY)
+            self.assertIn("protected directory", str(cm.exception))
+
+    def test_refuses_symlink_swapped_in_before_open(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / "root"
+            root.mkdir()
+            outside = Path(d) / "secret.txt"
+            outside.write_text("secret", encoding="utf-8")
+            victim = root / "victim.txt"
+            victim.write_text("ok", encoding="utf-8")
+            ctx = ToolContext(root=root)
+            real_open = os.open
+
+            def racing_open(path, flags, mode=0o777, **kwargs):
+                if Path(path) == victim:
+                    victim.unlink()
+                    victim.symlink_to(outside)
+                return real_open(path, flags, mode, **kwargs)
+
+            with patch("os.open", side_effect=racing_open):
+                with self.assertRaises(ToolError):
+                    open_checked(ctx, victim, os.O_RDONLY)
+
+    @unittest.skipUnless(Path("/proc/self/fd").exists(), "needs /proc/self/fd")
+    def test_refuses_parent_dir_swapped_to_symlink_before_open(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / "root"
+            (root / "sub").mkdir(parents=True)
+            victim = root / "sub" / "f.txt"
+            victim.write_text("ok", encoding="utf-8")
+            outside = Path(d) / "outside"
+            outside.mkdir()
+            (outside / "f.txt").write_text("secret", encoding="utf-8")
+            ctx = ToolContext(root=root)
+            real_open = os.open
+
+            def racing_open(path, flags, mode=0o777, **kwargs):
+                if Path(path) == victim:
+                    (root / "sub").rename(root / "sub_real")
+                    (root / "sub").symlink_to(outside)
+                return real_open(path, flags, mode, **kwargs)
+
+            with patch("os.open", side_effect=racing_open):
+                with self.assertRaises(ToolError) as cm:
+                    open_checked(ctx, victim, os.O_RDONLY)
+            self.assertIn("escaped the workspace root", str(cm.exception))
+            self.assertEqual((outside / "f.txt").read_text(encoding="utf-8"), "secret")
 
 
 if __name__ == "__main__":

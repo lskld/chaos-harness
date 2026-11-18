@@ -1,4 +1,6 @@
 import json
+import os
+import stat
 import tempfile
 import unittest
 from pathlib import Path
@@ -37,6 +39,36 @@ class ConfigTest(unittest.TestCase):
                 config_mod.load(path)
             data = json.loads(path.read_text(encoding="utf-8"))
             self.assertIn("providers", data)
+
+    def test_example_config_is_written_owner_only(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "sub" / "config.json"
+            with self.assertRaises(config_mod.ConfigError):
+                config_mod.load(path)
+            self.assertEqual(stat.S_IMODE(os.stat(path).st_mode) & 0o077, 0)
+
+    def test_save_writes_owner_only(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            config_mod.save(path, SAMPLE)
+            self.assertEqual(stat.S_IMODE(os.stat(path).st_mode) & 0o077, 0)
+
+    def test_load_tightens_group_or_world_readable_config(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            path.write_text(json.dumps(SAMPLE), encoding="utf-8")
+            os.chmod(path, 0o644)
+            cfg = config_mod.load(path)
+            self.assertEqual(cfg["default_model"], "openrouter/auto")
+            self.assertEqual(stat.S_IMODE(os.stat(path).st_mode) & 0o077, 0)
+
+    def test_save_tightens_existing_loose_config(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            path.write_text(json.dumps(SAMPLE), encoding="utf-8")
+            os.chmod(path, 0o640)
+            config_mod.save(path, SAMPLE)
+            self.assertEqual(stat.S_IMODE(os.stat(path).st_mode) & 0o077, 0)
 
     def test_resolve_provider_model(self):
         with tempfile.TemporaryDirectory() as d:

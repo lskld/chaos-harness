@@ -6,6 +6,7 @@ from rich.markup import escape
 
 from . import commands
 from . import config as config_mod
+from . import tools as tools_mod
 from . import ui
 from .agent import respond
 
@@ -108,6 +109,9 @@ def main(argv=None):
         console.print(f"[bold red]error: {escape(str(exc))}[/]")
         return 2
     theme = config_mod.theme(cfg)
+    warning = tools_mod.root_warning(tools_mod.workspace_root(cfg), args.config)
+    if warning:
+        console.print(f"[bold yellow]warning: {escape(warning)}[/]")
     ref = args.model or cfg.get("default_model")
     try:
         config_mod.resolve(cfg, ref)

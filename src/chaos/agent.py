@@ -1,6 +1,4 @@
 import json
-import os
-from pathlib import Path
 
 from . import config as config_mod
 from . import tools as tools_mod
@@ -18,9 +16,8 @@ SYSTEM_PROMPT = (
 
 
 def _context(cfg):
-    root = Path(cfg.get("workspace_root") or os.getcwd())
     return tools_mod.ToolContext(
-        root=root,
+        root=tools_mod.workspace_root(cfg),
         max_file_bytes=int(cfg.get("max_file_bytes", tools_mod.DEFAULT_MAX_FILE_BYTES)),
         max_result_bytes=int(cfg.get("max_result_bytes", tools_mod.DEFAULT_MAX_RESULT_BYTES)),
     )

@@ -8,7 +8,7 @@ from unittest.mock import patch
 from rich.console import Console
 
 from chaos import config as config_mod
-from chaos.cli import repl
+from chaos.cli import main, repl
 from chaos.llm import Reply
 
 CFG = {
@@ -86,6 +86,38 @@ class ReplCommandTest(unittest.TestCase):
                 out = run_repl(["hi", "/exit"], cfg, path)
             self.assertIn("write_file x.py", out)
             self.assertIn("yo", out)
+
+
+class MainTest(unittest.TestCase):
+    def test_main_warns_loudly_when_workspace_root_is_home(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            path.write_text(json.dumps(CFG), encoding="utf-8")
+            buf = io.StringIO()
+            with (
+                patch("os.getcwd", return_value=str(Path.home())),
+                patch("chaos.cli.respond", return_value=Reply(text="yo")),
+                patch("sys.stdout", buf),
+            ):
+                rc = main(["--config", str(path), "hi"])
+            self.assertEqual(rc, 0)
+            out = buf.getvalue()
+            self.assertIn("warning", out)
+            self.assertIn("workspace root", out)
+
+    def test_main_stays_quiet_for_a_plain_project_root(self):
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as cfgdir:
+            path = Path(cfgdir) / "config.json"
+            path.write_text(json.dumps(CFG), encoding="utf-8")
+            buf = io.StringIO()
+            with (
+                patch("os.getcwd", return_value=d),
+                patch("chaos.cli.respond", return_value=Reply(text="yo")),
+                patch("sys.stdout", buf),
+            ):
+                rc = main(["--config", str(path), "hi"])
+            self.assertEqual(rc, 0)
+            self.assertNotIn("warning", buf.getvalue())
 
 
 if __name__ == "__main__":
