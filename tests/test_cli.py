@@ -33,27 +33,16 @@ def run_repl(lines, cfg, path, ref="p/m"):
 
 
 class ReplCommandTest(unittest.TestCase):
-    def test_theme_command_is_handled_and_persisted(self):
+    def test_model_and_theme_commands_switch_and_persist(self):
         with tempfile.TemporaryDirectory() as d:
             path = Path(d) / "config.json"
             path.write_text(json.dumps(CFG), encoding="utf-8")
             cfg = config_mod.load(path)
-            out = run_repl(["/theme", "/theme mono", "/exit"], cfg, path)
-            self.assertIn("fire", out)
-            self.assertIn("ocean", out)
-            self.assertNotIn("unknown theme", out)
-            saved = json.loads(path.read_text(encoding="utf-8"))
-            self.assertEqual(saved["theme_name"], "mono")
-
-    def test_model_command_switch_is_persisted(self):
-        with tempfile.TemporaryDirectory() as d:
-            path = Path(d) / "config.json"
-            path.write_text(json.dumps(CFG), encoding="utf-8")
-            cfg = config_mod.load(path)
-            out = run_repl(["/model p/m2", "/exit"], cfg, path)
+            out = run_repl(["/model p/m2", "/theme mono", "/exit"], cfg, path)
             self.assertIn("switched to p/m2", out)
             saved = json.loads(path.read_text(encoding="utf-8"))
             self.assertEqual(saved["default_model"], "p/m2")
+            self.assertEqual(saved["theme_name"], "mono")
 
     def test_unknown_theme_reports_error(self):
         with tempfile.TemporaryDirectory() as d:

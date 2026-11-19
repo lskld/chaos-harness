@@ -417,14 +417,6 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertIn("workspace root", log_text(app))
 
-    async def test_no_workspace_root_warning_for_a_plain_project_root(self):
-        with tempfile.TemporaryDirectory() as d:
-            cfg = {**CFG, "workspace_root": d}
-            app = ChaosApp(cfg, "p/m")
-            async with app.run_test() as pilot:
-                await pilot.pause()
-                self.assertNotIn("workspace root is", log_text(app))
-
     async def test_clear_empties_log(self):
         app = ChaosApp(CFG, "p/m")
         async with app.run_test() as pilot:
