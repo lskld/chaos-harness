@@ -1,10 +1,6 @@
 # AGENTS.md — working on chaos-harness
 
-chaos-harness is a hackathon-specific, bring-your-own-model agent CLI (Team
-Chaos, MIT, free to fork and adapt). Python 3.12+, src layout, unittest suite.
-
-This file stays lean on purpose: only what is needed every session. For a deep
-dive into an area, use a skill or read that module's source/docstrings.
+chaos-harness is a hackathon-specific, bring-your-own-model agent CLI. Python 3.12+, src layout, unittest suite.
 
 ## Layout
 
