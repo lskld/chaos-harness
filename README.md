@@ -97,6 +97,44 @@ oversized files/results are capped. Optional config keys (all have defaults):
 `"workspace_root"`, `"max_file_bytes"` (200000), `"max_result_bytes"` (20000),
 `"max_tool_rounds"` (10, the tool-loop iteration cap per turn).
 
+## Automatic PR review
+
+Every pull request gets an automated review comment from a Mistral model
+(default `mistral-large-latest`, the current Mistral Large 4). The
+`PR review` workflow (`.github/workflows/pr-review.yml`) fetches the PR diff
+via the GitHub API, sends it together with `AGENTS.md` to
+`https://api.mistral.ai/v1/chat/completions` (script:
+`.github/scripts/pr_review.py`, which reuses the streaming `chaos.llm.chat_stream`), and posts the
+review as a PR comment: a verdict (approve / changes requested / comment), a
+summary, and findings with `file:line` references. It runs on `opened`,
+`synchronize` and `reopened`.
+
+Setup (repo admin, once):
+
+1. Add a `MISTRAL_API_KEY` secret (Settings → Secrets and variables → Actions).
+2. Optionally set repo variables `REVIEW_MODEL` (any Mistral model id, e.g. a
+   pinned dated id) and `MISTRAL_BASE_URL` (defaults to `https://api.mistral.ai/v1`).
+
+You can also re-run a review manually: Actions → "PR review" → Run workflow,
+passing the PR number (also useful to test the workflow on the PR that
+introduces it, before the workflow exists on the default branch).
+
+The review is advisory: it comments on the PR but does not block merging —
+you (or an agent) verify the findings and fix what needs fixing before merge.
+PRs from forks skip the review automatically (GitHub withholds secrets from
+them), so the check stays green for those.
+
+Security notes: the `pull_request` event never exposes secrets to PRs from
+forks (GitHub withholds them there), so the check just skips for those. For
+PRs from branches in this repo the workflow code itself runs with the secret
+in the environment — the standard `pull_request` caveat, acceptable when PRs
+come from trusted collaborators/agents; switch the trigger to
+`pull_request_target` (plus a base-sha checkout) if that ever changes. Lines
+in the diff that look like credentials (`api_key = ...`, `token: ...`, etc.)
+are redacted before the diff is sent to Mistral; note that the diff is still
+transmitted to `api.mistral.ai` as part of the review. PR- and model-derived
+text is markdown-escaped before it is rendered into the bot comment.
+
 ## Development
 
 ```bash

@@ -233,6 +233,27 @@ class ChatStreamTest(unittest.TestCase):
         self.assertTrue(post.call_args.kwargs["json"]["stream"])
         self.assertTrue(post.call_args.kwargs["stream"])
 
+    def test_stream_content_as_list_of_text_parts_is_accumulated(self):
+        lines = [
+            'data: {"choices": [{"delta": {"content": [{"type": "text", "text": "hel"}]}}]}',
+            'data: {"choices": [{"delta": {"content": [{"type": "text", "text": "lo"}]}}]}',
+            "data: [DONE]",
+        ]
+        with patch("chaos.llm.requests.post") as post:
+            post.return_value = sse_response(lines)
+            reply = chat_stream(base_url="https://x/v1", api_key="k", model="m", messages=[])
+        self.assertEqual(reply.text, "hello")
+
+    def test_max_tokens_is_sent_only_when_set(self):
+        with patch("chaos.llm.requests.post") as post:
+            response = fake_response(payload=payload(content="hi"))
+            response.headers = {"Content-Type": "application/json"}
+            post.return_value = response
+            chat_stream(base_url="https://x/v1", api_key="k", model="m", messages=[])
+            self.assertNotIn("max_tokens", post.call_args.kwargs["json"])
+            chat_stream(base_url="https://x/v1", api_key="k", model="m", messages=[], max_tokens=4096)
+            self.assertEqual(post.call_args.kwargs["json"]["max_tokens"], 4096)
+
     def test_non_sse_response_falls_back_to_plain_parsing(self):
         with patch("chaos.llm.requests.post") as post:
             response = fake_response(payload=payload(content="hi", reasoning="hmm"))
