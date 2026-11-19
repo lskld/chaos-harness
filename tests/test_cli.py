@@ -119,6 +119,33 @@ class MainTest(unittest.TestCase):
             self.assertEqual(rc, 0)
             self.assertNotIn("warning", buf.getvalue())
 
+    def test_one_shot_prints_model_output_literally(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            path.write_text(json.dumps(CFG), encoding="utf-8")
+            buf = io.StringIO()
+            with (
+                patch("chaos.cli.respond", return_value=Reply(text="[red]not styled[/]")),
+                patch("sys.stdout", buf),
+            ):
+                rc = main(["--config", str(path), "hi"])
+            self.assertEqual(rc, 0)
+            self.assertIn("[red]not styled[/]", buf.getvalue())
+
+    def test_main_reports_friendly_error_when_config_dir_is_unwritable(self):
+        with tempfile.TemporaryDirectory() as d:
+            blocker = Path(d) / "blocker"
+            blocker.write_text("not a directory", encoding="utf-8")
+            path = blocker / "config.json"
+            buf = io.StringIO()
+            with patch("sys.stdout", buf):
+                rc = main(["--config", str(path), "hi"])
+            self.assertEqual(rc, 2)
+            out = buf.getvalue()
+            self.assertIn("error:", out)
+            self.assertIn("cannot write example config", out)
+            self.assertNotIn("Traceback", out)
+
 
 if __name__ == "__main__":
     unittest.main()

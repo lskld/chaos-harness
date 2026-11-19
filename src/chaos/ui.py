@@ -66,7 +66,7 @@ def render_thinking(theme, reasoning):
 def render_reply(theme, text):
     return Group(
         Text.from_markup(f"[{theme['assistant']}]chaos[/]"),
-        Markdown(text),
+        Markdown(text, hyperlinks=False),
     )
 
 

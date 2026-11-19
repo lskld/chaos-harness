@@ -1,6 +1,8 @@
+import io
 import unittest
 
-from rich.console import Group
+from rich.console import Console, Group
+from rich.markdown import Markdown
 
 from chaos import config as config_mod
 from chaos import ui
@@ -10,6 +12,17 @@ class RenderTest(unittest.TestCase):
     def test_reply_is_borderless_label_plus_markdown(self):
         rendered = ui.render_reply(config_mod.DEFAULT_THEME, "hello")
         self.assertIsInstance(rendered, Group)
+
+    def test_reply_markdown_disables_terminal_hyperlinks(self):
+        rendered = ui.render_reply(config_mod.DEFAULT_THEME, "[click](https://evil.example)")
+        markdown = rendered.renderables[1]
+        self.assertIsInstance(markdown, Markdown)
+        self.assertFalse(markdown.hyperlinks)
+        console = Console(file=io.StringIO(), width=80, force_terminal=True)
+        console.print(rendered)
+        out = console.file.getvalue()
+        self.assertNotIn("\x1b]8", out)
+        self.assertIn("https://evil.example", out)
 
     def test_thinking_is_none_when_empty(self):
         self.assertIsNone(ui.render_thinking(config_mod.DEFAULT_THEME, ""))
