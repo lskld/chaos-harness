@@ -249,17 +249,6 @@ class MainTest(unittest.TestCase):
         self.assertIn("✅ Approve", body)
 
 
-class CallReviewModelTest(unittest.TestCase):
-    def test_raises_last_error_after_all_attempts(self):
-        with patch.object(pr_review, "chat", side_effect=[LLMError("t1"), LLMError("t2")]), patch.object(
-            pr_review.time, "sleep"
-        ):
-            with self.assertRaises(LLMError) as ctx:
-                pr_review.call_review_model(
-                    base_url="u", api_key="k", model="m", messages=[], timeout=1, attempts=2
-                )
-        self.assertIn("t2", str(ctx.exception))
-
     def test_unparseable_reply_posts_raw_text(self):
         with patch.object(pr_review, "fetch_pr", return_value=make_pr()), patch.object(
             pr_review, "fetch_diff", return_value="d"
@@ -272,6 +261,18 @@ class CallReviewModelTest(unittest.TestCase):
         self.assertEqual(code, 0)
         body = post_mock.call_args.args[3]
         self.assertIn("not json at all", body)
+
+
+class CallReviewModelTest(unittest.TestCase):
+    def test_raises_last_error_after_all_attempts(self):
+        with patch.object(pr_review, "chat", side_effect=[LLMError("t1"), LLMError("t2")]), patch.object(
+            pr_review.time, "sleep"
+        ):
+            with self.assertRaises(LLMError) as ctx:
+                pr_review.call_review_model(
+                    base_url="u", api_key="k", model="m", messages=[], timeout=1, attempts=2
+                )
+        self.assertIn("t2", str(ctx.exception))
 
 
 if __name__ == "__main__":
