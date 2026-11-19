@@ -372,6 +372,7 @@ def run():
     workspace = os.environ.get("GITHUB_WORKSPACE") or os.getcwd()
 
     pr = fetch_pr(repo, number, token)
+    pr = {**pr, "title": scrub_secrets(pr["title"]), "body": scrub_secrets(pr["body"])}
     diff = scrub_secrets(fetch_diff(repo, number, token, max_diff))
     messages = build_messages(pr, diff, read_agents_md(workspace))
 

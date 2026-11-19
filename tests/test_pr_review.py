@@ -332,7 +332,9 @@ class MainTest(unittest.TestCase):
         self.assertIn("not json at all", body)
 
     def test_diff_is_scrubbed_before_sending_to_model(self):
-        with patch.object(pr_review, "fetch_pr", return_value=make_pr()), patch.object(
+        with patch.object(
+            pr_review, "fetch_pr", return_value=make_pr(body='token: ghp_abcdefgh1234567890')
+        ), patch.object(
             pr_review, "fetch_diff", return_value='api_key = "sk-live-abcdef123456"\n'
         ), patch.object(pr_review, "read_agents_md", return_value=""), patch.object(
             pr_review, "chat_stream", return_value=Mock(text='{"verdict": "approve"}', reasoning="")
@@ -343,6 +345,7 @@ class MainTest(unittest.TestCase):
         self.assertEqual(code, 0)
         user_message = chat_mock.call_args.kwargs["messages"][1]["content"]
         self.assertNotIn("sk-live-abcdef123456", user_message)
+        self.assertNotIn("ghp_abcdefgh1234567890", user_message)
         self.assertIn("***redacted***", user_message)
 
     def test_unexpected_error_still_exits_zero_and_posts_failure(self):
