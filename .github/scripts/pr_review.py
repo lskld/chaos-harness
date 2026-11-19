@@ -275,7 +275,7 @@ def post_comment(repo, number, token, body):
     return response.json()
 
 
-def call_review_model(*, base_url, api_key, model, messages, timeout=240, attempts=2):
+def call_review_model(*, base_url, api_key, model, messages, timeout=200, attempts=3):
     last_error = None
     for attempt in range(1, attempts + 1):
         try:
