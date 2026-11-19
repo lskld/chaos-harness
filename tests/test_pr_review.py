@@ -222,14 +222,43 @@ class MainTest(unittest.TestCase):
             pr_review, "fetch_diff", return_value="d"
         ), patch.object(pr_review, "read_agents_md", return_value=""), patch.object(
             pr_review, "chat", side_effect=LLMError("API error 500")
-        ), patch.object(
-            pr_review, "post_comment"
-        ) as post_mock:
+        ), patch.object(pr_review, "post_comment") as post_mock, patch.object(pr_review.time, "sleep"):
             code = self.run_main(BASE_ENV)
         self.assertEqual(code, 0)
         body = post_mock.call_args.args[3]
         self.assertIn("could not be completed", body)
         self.assertIn("API error 500", body)
+
+    def test_retries_once_after_transient_error(self):
+        with patch.object(pr_review, "fetch_pr", return_value=make_pr()), patch.object(
+            pr_review, "fetch_diff", return_value="d"
+        ), patch.object(pr_review, "read_agents_md", return_value=""), patch.object(
+            pr_review,
+            "chat",
+            side_effect=[LLMError("ReadTimeout"), Mock(text='{"verdict": "approve", "summary": "ok", "findings": []}')],
+        ) as chat_mock, patch.object(
+            pr_review, "post_comment"
+        ) as post_mock, patch.object(
+            pr_review.time, "sleep"
+        ) as sleep_mock:
+            code = self.run_main(BASE_ENV)
+        self.assertEqual(code, 0)
+        self.assertEqual(chat_mock.call_count, 2)
+        sleep_mock.assert_called_once()
+        body = post_mock.call_args.args[3]
+        self.assertIn("✅ Approve", body)
+
+
+class CallReviewModelTest(unittest.TestCase):
+    def test_raises_last_error_after_all_attempts(self):
+        with patch.object(pr_review, "chat", side_effect=[LLMError("t1"), LLMError("t2")]), patch.object(
+            pr_review.time, "sleep"
+        ):
+            with self.assertRaises(LLMError) as ctx:
+                pr_review.call_review_model(
+                    base_url="u", api_key="k", model="m", messages=[], timeout=1, attempts=2
+                )
+        self.assertIn("t2", str(ctx.exception))
 
     def test_unparseable_reply_posts_raw_text(self):
         with patch.object(pr_review, "fetch_pr", return_value=make_pr()), patch.object(

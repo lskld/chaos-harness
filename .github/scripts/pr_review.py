@@ -18,6 +18,7 @@ Environment:
 import json
 import os
 import sys
+import time
 
 import requests
 
@@ -257,6 +258,19 @@ def post_comment(repo, number, token, body):
     return response.json()
 
 
+def call_review_model(*, base_url, api_key, model, messages, timeout=240, attempts=2):
+    last_error = None
+    for attempt in range(1, attempts + 1):
+        try:
+            return chat(base_url=base_url, api_key=api_key, model=model, messages=messages, timeout=timeout)
+        except LLMError as exc:
+            last_error = exc
+            print(f"review attempt {attempt}/{attempts} failed: {exc}")
+            if attempt < attempts:
+                time.sleep(10 * attempt)
+    raise last_error
+
+
 def pr_number():
     value = os.environ.get("PR_NUMBER")
     if value:
@@ -283,7 +297,7 @@ def main():
     messages = build_messages(pr, diff, read_agents_md(workspace))
 
     try:
-        reply = chat(base_url=base_url, api_key=api_key, model=model, messages=messages, timeout=300)
+        reply = call_review_model(base_url=base_url, api_key=api_key, model=model, messages=messages)
     except LLMError as exc:
         post_comment(repo, number, token, render_error(model, f"review request failed: {exc}"))
         print(f"review failed: {exc}")
