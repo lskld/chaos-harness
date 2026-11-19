@@ -256,7 +256,7 @@ class MainTest(unittest.TestCase):
         with patch.object(pr_review, "fetch_pr", return_value=make_pr()), patch.object(
             pr_review, "fetch_diff", return_value="diff"
         ), patch.object(pr_review, "read_agents_md", return_value="agents"), patch.object(
-            pr_review, "chat_stream", return_value=Mock(text=json.dumps(review_payload))
+            pr_review, "chat_stream", return_value=Mock(text=json.dumps(review_payload), reasoning="")
         ) as chat_mock, patch.object(
             pr_review, "post_comment"
         ) as post_mock:
@@ -276,7 +276,7 @@ class MainTest(unittest.TestCase):
         with patch.object(pr_review, "fetch_pr", return_value=make_pr()), patch.object(
             pr_review, "fetch_diff", return_value="d"
         ), patch.object(pr_review, "read_agents_md", return_value=""), patch.object(
-            pr_review, "chat_stream", return_value=Mock(text='{"verdict": "approve"}')
+            pr_review, "chat_stream", return_value=Mock(text='{"verdict": "approve"}', reasoning="")
         ) as chat_mock, patch.object(
             pr_review, "post_comment"
         ):
@@ -304,7 +304,7 @@ class MainTest(unittest.TestCase):
         ), patch.object(pr_review, "read_agents_md", return_value=""), patch.object(
             pr_review,
             "chat_stream",
-            side_effect=[LLMError("ReadTimeout"), Mock(text='{"verdict": "approve", "summary": "ok", "findings": []}')],
+            side_effect=[LLMError("ReadTimeout"), Mock(text='{"verdict": "approve", "summary": "ok", "findings": []}', reasoning="")],
         ) as chat_mock, patch.object(
             pr_review, "post_comment"
         ) as post_mock, patch.object(
@@ -322,7 +322,7 @@ class MainTest(unittest.TestCase):
         with patch.object(pr_review, "fetch_pr", return_value=make_pr()), patch.object(
             pr_review, "fetch_diff", return_value="d"
         ), patch.object(pr_review, "read_agents_md", return_value=""), patch.object(
-            pr_review, "chat_stream", return_value=Mock(text="not json at all")
+            pr_review, "chat_stream", return_value=Mock(text="not json at all", reasoning="")
         ), patch.object(
             pr_review, "post_comment"
         ) as post_mock:
@@ -335,7 +335,7 @@ class MainTest(unittest.TestCase):
         with patch.object(pr_review, "fetch_pr", return_value=make_pr()), patch.object(
             pr_review, "fetch_diff", return_value='api_key = "sk-live-abcdef123456"\n'
         ), patch.object(pr_review, "read_agents_md", return_value=""), patch.object(
-            pr_review, "chat_stream", return_value=Mock(text='{"verdict": "approve"}')
+            pr_review, "chat_stream", return_value=Mock(text='{"verdict": "approve"}', reasoning="")
         ) as chat_mock, patch.object(
             pr_review, "post_comment"
         ):
@@ -369,7 +369,7 @@ class CallReviewModelTest(unittest.TestCase):
 
     def test_uses_streaming_chat(self):
         with patch.object(
-            pr_review, "chat_stream", return_value=Mock(text='{"verdict": "approve"}')
+            pr_review, "chat_stream", return_value=Mock(text='{"verdict": "approve"}', reasoning="")
         ) as stream_mock:
             pr_review.call_review_model(base_url="u", api_key="k", model="m", messages=[])
         kwargs = stream_mock.call_args.kwargs
@@ -380,7 +380,7 @@ class CallReviewModelTest(unittest.TestCase):
         with patch.object(
             pr_review,
             "chat_stream",
-            side_effect=[Mock(text=""), Mock(text='{"verdict": "approve", "summary": "ok", "findings": []}')],
+            side_effect=[Mock(text="", reasoning=""), Mock(text='{"verdict": "approve", "summary": "ok", "findings": []}', reasoning="")],
         ) as stream_mock, patch.object(pr_review.time, "sleep"):
             reply = pr_review.call_review_model(base_url="u", api_key="k", model="m", messages=[])
         self.assertEqual(stream_mock.call_count, 2)
