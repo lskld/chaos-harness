@@ -44,11 +44,37 @@ SECRET_LINE = re.compile(
     r"(?i)\b(api[_-]?key|secret|token|password|passwd|authorization|private[_-]?key)"
     r"(\s*[:=]\s*[\"']?)([^\s\"']{8,})"
 )
+AUTH_SCHEME = re.compile(r"(?i)\b(bearer|basic)(\s+)[^\s]{8,}")
+KNOWN_TOKEN = re.compile(
+    r"\b(ghp|gho|ghs|ghu|ghr|github_pat|sk(?:-proj|-live|-test)?|xox[baprs]-|AIza|AKIA|ASIA)"
+    r"[A-Za-z0-9_\-]{8,}"
+)
+URL_CREDENTIALS = re.compile(r"(\b[a-z][a-z0-9+.-]*://[^/\s:@]+:)([^@\s]+)(@)")
+PEM_BEGIN = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----")
+PEM_END = re.compile(r"-----END [A-Z0-9 ]*PRIVATE KEY-----")
+BASE64_BODY = re.compile(r"^[A-Za-z0-9+/]{40,}={0,2}$")
 MD_SPECIALS = re.compile(r"([\\`*_{}\[\]()#+\-.!|>~])")
 
 
 def scrub_secrets(text):
-    return SECRET_LINE.sub(lambda m: m.group(1) + m.group(2) + "***redacted***", text)
+    text = SECRET_LINE.sub(lambda m: m.group(1) + m.group(2) + "***redacted***", text)
+    text = AUTH_SCHEME.sub(lambda m: m.group(1) + m.group(2) + "***redacted***", text)
+    text = KNOWN_TOKEN.sub(lambda m: m.group(1) + "***redacted***", text)
+    text = URL_CREDENTIALS.sub(lambda m: m.group(1) + "***redacted***" + m.group(3), text)
+    out = []
+    in_pem = False
+    for line in text.splitlines(keepends=True):
+        if PEM_BEGIN.search(line):
+            in_pem = True
+            out.append("-----BEGIN ***redacted*** PRIVATE KEY-----\n")
+        elif PEM_END.search(line):
+            in_pem = False
+            out.append("-----END ***redacted*** PRIVATE KEY-----\n")
+        elif in_pem and BASE64_BODY.match(line.strip()):
+            out.append("***redacted***\n")
+        else:
+            out.append(line)
+    return "".join(out)
 
 
 def escape_md(text):

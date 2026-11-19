@@ -140,6 +140,27 @@ class ScrubSecretsTest(unittest.TestCase):
     def test_keeps_short_values(self):
         self.assertEqual(pr_review.scrub_secrets("token = abc"), "token = abc")
 
+    def test_redacts_bearer_and_basic_schemes(self):
+        scrubbed = pr_review.scrub_secrets("Authorization: Bearer ghp_abcdefghijklmnop123")
+        self.assertNotIn("ghp_abcdefghijklmnop123", scrubbed)
+        self.assertIn("Bearer ***redacted***", scrubbed)
+
+    def test_redacts_known_token_prefixes(self):
+        for token in ("ghp_abcdefgh1234567890", "sk-proj-abcdefgh1234", "xoxb-1234567890ab", "AIzaSyabcdefgh1234567"):
+            self.assertNotIn(token, pr_review.scrub_secrets(f"leaked {token} here"))
+
+    def test_redacts_url_embedded_credentials(self):
+        scrubbed = pr_review.scrub_secrets("clone https://user:hunter2secret@github.com/o/r.git")
+        self.assertNotIn("hunter2secret", scrubbed)
+        self.assertIn("https://user:***redacted***@github.com", scrubbed)
+
+    def test_redacts_pem_blocks(self):
+        pem = "-----BEGIN RSA PRIVATE KEY-----\n" + "A" * 64 + "\n" + "B" * 64 + "\n-----END RSA PRIVATE KEY-----\n"
+        scrubbed = pr_review.scrub_secrets(pem)
+        self.assertNotIn("A" * 64, scrubbed)
+        self.assertNotIn("B" * 64, scrubbed)
+        self.assertIn("BEGIN ***redacted***", scrubbed)
+
 
 class EscapeMdTest(unittest.TestCase):
     def test_escapes_markdown_specials(self):
