@@ -49,13 +49,6 @@ class FileToolsTest(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("binary", result["error"])
 
-    def test_read_file_truncates_over_size_limit(self):
-        ctx = ToolContext(root=self.root, max_file_bytes=10)
-        result = json.loads(execute("read_file", json.dumps({"path": "src/a.py"}), ctx))
-        self.assertTrue(result["ok"])
-        self.assertTrue(result["truncated"])
-        self.assertLessEqual(len(result["content"].encode("utf-8")), 10)
-
     def test_read_file_over_size_limit_reads_only_the_head(self):
         (self.root / "big.log").write_text("line\n" * 5000, encoding="utf-8")
         ctx = ToolContext(root=self.root, max_file_bytes=1000)
