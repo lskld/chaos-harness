@@ -1,7 +1,35 @@
-# chaos-harness
+<h1 align="center">🔥 chaos-harness</h1>
 
-A hackathon-specific, bring-your-own-model agent CLI, made by Team Chaos — free
-for anyone to use, fork, and adapt.
+<p align="center">
+  <b>A hackathon-specific, bring-your-own-model agent CLI — made by Team Chaos.</b><br>
+  Limited time, limited credits, a demo that has to work on stage. Free for anyone to use, fork, and adapt.
+</p>
+
+<p align="center">
+  <a href="https://github.com/lskld/chaos-harness/actions/workflows/ci.yml">
+    <img src="https://github.com/lskld/chaos-harness/actions/workflows/ci.yml/badge.svg" alt="CI">
+  </a>
+  <a href="https://github.com/lskld/chaos-harness/actions/workflows/pr-review.yml">
+    <img src="https://github.com/lskld/chaos-harness/actions/workflows/pr-review.yml/badge.svg" alt="PR review">
+  </a>
+  <a href="https://github.com/lskld/chaos-harness/blob/main/pyproject.toml">
+    <img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+">
+  </a>
+  <a href="https://github.com/lskld/chaos-harness/blob/main/LICENSE">
+    <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License: MIT">
+  </a>
+</p>
+
+## What it is
+
+Most AI assistants are general purpose; hackathons are not. chaos-harness is a
+small agent shaped around how hackathons work:
+
+- 🤖 **Agent with file tools** — reads, lists, edits and writes files in your workspace (path-confined)
+- 🧠 **Bring your own model** — any OpenAI-compatible `POST /chat/completions` API works
+- 🖥️ **Interactive TUI + one-shot mode** — full-screen app on a TTY, plain loop when piped
+- 🎨 **Themable** — color themes plus an animated mascot (`fire`, `ocean`, `forest`, `sunset`, `mono`)
+- 🤝 **Automated PR reviews** — every PR gets a review comment from a Mistral model
 
 ## Quickstart
 
@@ -10,6 +38,28 @@ pip install -e .
 chaos          # first run writes an example ~/.chaos/config.json — fill in a provider
 chaos "hi"     # one-shot prompt
 ```
+
+Requires Python 3.10+. No API key is needed to install or run the tests — only
+to actually chat with a model.
+
+## Usage
+
+```bash
+chaos                  # interactive CLI (full-screen on a TTY, plain loop when piped)
+chaos "summarize this repo"          # one-shot prompt
+chaos "hi" --model my-provider/gpt-x # pick a model for this run
+chaos "hi" --config ./ci-config.json # use a different config file
+```
+
+Inside the CLI, slash commands:
+
+| Command | What it does |
+| --- | --- |
+| `/help` | show the command list |
+| `/model [provider/model]` | pick or switch model |
+| `/theme [name]` | pick a color theme |
+| `/clear` | clear the chat |
+| `/exit` | quit |
 
 ## Config (`~/.chaos/config.json`)
 
@@ -53,7 +103,27 @@ overrides keys of the selected preset — all keys are optional:
 }
 ```
 
-## Automatic PR review
+Never commit API keys — `.chaos/` and `.env` are gitignored, and configured
+secrets are redacted from tool output and errors.
+
+## Development
+
+```bash
+python -m venv .venv && source .venv/bin/activate   # optional but recommended
+pip install -e .
+python -m unittest discover -s tests -v              # HTTP is mocked, no API key needed
+chaos --help                                         # smoke-check the CLI
+```
+
+CI (`.github/workflows/ci.yml`) runs the same tests on Python 3.10, 3.12 and
+3.13 plus `chaos --help` on every push and PR.
+
+Layout and conventions for contributors (human or AI) are in
+[`AGENTS.md`](AGENTS.md) — read it before opening a PR: src layout, where each
+concern lives (CLI, Textual app, agent loop, tools, config, LLM), and the
+testing style.
+
+## Automated PR review
 
 Every pull request gets an automated review comment from a Mistral model
 (default `mistral-large-latest`, the current Mistral Large 4). The
@@ -63,13 +133,21 @@ via the GitHub API, sends it together with `AGENTS.md` to
 `.github/scripts/pr_review.py`, which reuses the streaming `chaos.llm.chat_stream`), and posts the
 review as a PR comment: a verdict (approve / changes requested / comment), a
 summary, and findings with `file:line` references. It runs on `opened`,
-`synchronize` and `reopened`.
+`synchronize` and `reopened`, and can be re-run manually from the Actions tab
+(`workflow_dispatch`). On fork PRs the `MISTRAL_API_KEY` secret is unavailable,
+so the review is skipped gracefully.
 
-## Development
+## Contributing
 
-```bash
-pip install -e .
-python -m unittest discover -s tests -v
-```
+Issues and PRs are welcome:
 
-Layout and conventions for contributors (human or AI) are in `AGENTS.md`.
+- 🐛 [Report a bug](https://github.com/lskld/chaos-harness/issues/new?template=bug_report.md)
+- ✨ [Request a feature](https://github.com/lskld/chaos-harness/issues/new?template=feature_request.md)
+
+Every PR is automatically reviewed (see above) and runs CI on all supported
+Python versions. Keep changes small and focused; add or update tests in
+`tests/` for anything you touch.
+
+## License
+
+[MIT](LICENSE) — use it, fork it, ship it on stage. 🔥
