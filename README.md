@@ -13,7 +13,7 @@
     <img src="https://github.com/lskld/chaos-harness/actions/workflows/pr-review.yml/badge.svg" alt="PR review">
   </a>
   <a href="https://github.com/lskld/chaos-harness/blob/main/pyproject.toml">
-    <img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+">
+    <img src="https://img.shields.io/badge/python-3.12%2B-blue.svg" alt="Python 3.12+">
   </a>
   <a href="https://github.com/lskld/chaos-harness/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License: MIT">
@@ -28,7 +28,7 @@ chaos          # first run writes an example ~/.chaos/config.json — fill in a 
 chaos "hi"     # one-shot prompt
 ```
 
-Requires Python 3.10+. No API key is needed to install or run the tests — only
+Requires Python 3.12+. No API key is needed to install or run the tests — only
 to actually chat with a model.
 
 ## Usage
@@ -104,8 +104,8 @@ python -m unittest discover -s tests -v              # HTTP is mocked, no API ke
 chaos --help                                         # smoke-check the CLI
 ```
 
-CI (`.github/workflows/ci.yml`) runs the same tests on Python 3.10, 3.12 and
-3.13 plus `chaos --help` on every push and PR.
+CI (`.github/workflows/ci.yml`) runs the same tests on Python 3.12, 3.14 and
+3.15 plus `chaos --help` on every push and PR.
 
 Layout and conventions for contributors (human or AI) are in
 [`AGENTS.md`](AGENTS.md) — read it before opening a PR: src layout, where each
