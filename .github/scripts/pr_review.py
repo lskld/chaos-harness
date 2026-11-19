@@ -17,6 +17,7 @@ Environment:
 
 import json
 import os
+import re
 import sys
 import time
 
@@ -38,6 +39,20 @@ VERDICT_LABELS = {
 }
 SEVERITY_ORDER = {"must_fix": 0, "suggestion": 1, "nit": 2}
 SEVERITY_LABELS = {"must_fix": "must fix", "suggestion": "suggestion", "nit": "nit"}
+
+SECRET_LINE = re.compile(
+    r"(?i)\b(api[_-]?key|secret|token|password|passwd|authorization|private[_-]?key)"
+    r"(\s*[:=]\s*[\"']?)([^\s\"']{8,})"
+)
+MD_SPECIALS = re.compile(r"([\\`*_{}\[\]()#+\-.!|>~])")
+
+
+def scrub_secrets(text):
+    return SECRET_LINE.sub(lambda m: m.group(1) + m.group(2) + "***redacted***", text)
+
+
+def escape_md(text):
+    return MD_SPECIALS.sub(r"\\\1", str(text))
 
 SYSTEM_PROMPT = """You are the automated code-review agent for the chaos-harness repository, a
 hackathon-specific bring-your-own-model agent CLI (Python, src layout, unittest
@@ -196,10 +211,11 @@ def normalize_review(raw):
             message = str(item.get("message") or "").strip()
             if not message:
                 continue
+            line = item.get("line")
             findings.append(
                 {
                     "file": str(item.get("file") or "?"),
-                    "line": item.get("line"),
+                    "line": line if isinstance(line, int) else None,
                     "severity": severity,
                     "message": message,
                 }
@@ -213,24 +229,25 @@ def render_comment(model, pr, review, raw_text=None):
     lines = [
         f"### 🤖 Automated PR review — `{model}`",
         "",
-        f"**{VERDICT_LABELS[review['verdict']]}** — PR #{pr['number']}: {pr['title']} "
+        f"**{VERDICT_LABELS[review['verdict']]}** — PR #{pr['number']}: {escape_md(pr['title'])} "
         f"({pr['changed_files']} file(s), +{pr['additions']}/-{pr['deletions']})",
         "",
     ]
     if review["summary"]:
-        lines += [review["summary"], ""]
+        lines += [escape_md(review["summary"]), ""]
     if review["findings"]:
         lines.append("**Findings:**")
         for finding in review["findings"]:
-            location = finding["file"]
-            if finding.get("line"):
+            location = str(finding["file"]).replace("`", "'")
+            if finding.get("line") is not None:
                 location += f":{finding['line']}"
             lines.append(
-                f"- **{SEVERITY_LABELS[finding['severity']]}** — `{location}` — {finding['message']}"
+                f"- **{SEVERITY_LABELS[finding['severity']]}** — `{location}` — {escape_md(finding['message'])}"
             )
         lines.append("")
     elif raw_text is not None:
-        lines += ["The reviewer did not return structured JSON; raw reply:", "", "```", raw_text, "```", ""]
+        fence = "````" if "```" in raw_text else "```"
+        lines += ["The reviewer did not return structured JSON; raw reply:", "", fence, raw_text, fence, ""]
     lines += ["", "_Advisory review: verify the findings yourself (or via an agent) before merging._"]
     return "\n".join(lines)
 
@@ -280,6 +297,27 @@ def pr_number():
 
 
 def main():
+    try:
+        return run()
+    except Exception as exc:
+        print(f"pr review failed unexpectedly: {type(exc).__name__}: {exc}")
+        try:
+            repo = os.environ.get("GITHUB_REPOSITORY", "")
+            token = os.environ.get("GITHUB_TOKEN", "")
+            if repo and token:
+                model = os.environ.get("REVIEW_MODEL") or DEFAULT_MODEL
+                post_comment(
+                    repo,
+                    pr_number(),
+                    token,
+                    render_error(model, f"unexpected error: {type(exc).__name__}: {exc}"),
+                )
+        except Exception as post_exc:
+            print(f"could not post failure comment: {post_exc}")
+        return 0
+
+
+def run():
     repo = os.environ["GITHUB_REPOSITORY"]
     token = os.environ.get("GITHUB_TOKEN", "")
     number = pr_number()
@@ -293,7 +331,7 @@ def main():
     workspace = os.environ.get("GITHUB_WORKSPACE") or os.getcwd()
 
     pr = fetch_pr(repo, number, token)
-    diff = fetch_diff(repo, number, token, max_diff)
+    diff = scrub_secrets(fetch_diff(repo, number, token, max_diff))
     messages = build_messages(pr, diff, read_agents_md(workspace))
 
     try:

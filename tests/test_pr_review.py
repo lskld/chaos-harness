@@ -121,6 +121,33 @@ class NormalizeReviewTest(unittest.TestCase):
         self.assertEqual(review["verdict"], "comment")
         self.assertEqual(review["findings"], [])
 
+    def test_non_int_line_is_dropped(self):
+        review = pr_review.normalize_review(
+            {"verdict": "comment", "findings": [{"file": "a.py", "line": "9; rm -rf", "severity": "nit", "message": "m"}]}
+        )
+        self.assertIsNone(review["findings"][0]["line"])
+
+
+class ScrubSecretsTest(unittest.TestCase):
+    def test_redacts_secret_looking_lines(self):
+        diff = 'api_key = "sk-live-abcdef123456"\n+    token: ghp_abcdefghijklmnop\nnormal line\n'
+        scrubbed = pr_review.scrub_secrets(diff)
+        self.assertNotIn("sk-live-abcdef123456", scrubbed)
+        self.assertNotIn("ghp_abcdefghijklmnop", scrubbed)
+        self.assertIn("***redacted***", scrubbed)
+        self.assertIn("normal line", scrubbed)
+
+    def test_keeps_short_values(self):
+        self.assertEqual(pr_review.scrub_secrets("token = abc"), "token = abc")
+
+
+class EscapeMdTest(unittest.TestCase):
+    def test_escapes_markdown_specials(self):
+        self.assertEqual(pr_review.escape_md("[x](http://e) `c` *s*"), "\\[x\\]\\(http://e\\) \\`c\\` \\*s\\*")
+
+    def test_plain_text_unchanged(self):
+        self.assertEqual(pr_review.escape_md("plain words 123"), "plain words 123")
+
 
 class RenderCommentTest(unittest.TestCase):
     def test_renders_verdict_summary_and_findings(self):
@@ -138,10 +165,31 @@ class RenderCommentTest(unittest.TestCase):
         self.assertIn("**must fix**", body)
         self.assertIn("Advisory review", body)
 
+    def test_escapes_untrusted_title_and_messages(self):
+        pr = make_pr(title="[click](https://evil.example) `x`")
+        review = {
+            "verdict": "comment",
+            "summary": "summary with [link](https://evil.example)",
+            "findings": [
+                {"file": "a`b.py", "line": 1, "severity": "nit", "message": "msg with `backtick` and *stars*"}
+            ],
+        }
+        body = pr_review.render_comment("m", pr, review)
+        self.assertNotIn("[click](https://evil.example)", body)
+        self.assertNotIn("[link](https://evil.example)", body)
+        self.assertIn("\\[click\\]", body)
+        self.assertNotIn("`backtick`", body)
+        self.assertIn("a'b.py:1", body)
+
     def test_raw_fallback_when_json_unparseable(self):
         review = {"verdict": "comment", "summary": "", "findings": []}
         body = pr_review.render_comment("m", make_pr(), review, raw_text="free-form reply")
         self.assertIn("free-form reply", body)
+
+    def test_raw_fallback_uses_longer_fence_when_reply_contains_fence(self):
+        review = {"verdict": "comment", "summary": "", "findings": []}
+        body = pr_review.render_comment("m", make_pr(), review, raw_text="code:\n```py\nx = 1\n```")
+        self.assertIn("````\ncode:\n```py\nx = 1\n```\n````", body)
 
     def test_render_error_mentions_failure(self):
         body = pr_review.render_error("m", "boom")
@@ -261,6 +309,30 @@ class MainTest(unittest.TestCase):
         self.assertEqual(code, 0)
         body = post_mock.call_args.args[3]
         self.assertIn("not json at all", body)
+
+    def test_diff_is_scrubbed_before_sending_to_model(self):
+        with patch.object(pr_review, "fetch_pr", return_value=make_pr()), patch.object(
+            pr_review, "fetch_diff", return_value='api_key = "sk-live-abcdef123456"\n'
+        ), patch.object(pr_review, "read_agents_md", return_value=""), patch.object(
+            pr_review, "chat", return_value=Mock(text='{"verdict": "approve"}')
+        ) as chat_mock, patch.object(
+            pr_review, "post_comment"
+        ):
+            code = self.run_main(BASE_ENV)
+        self.assertEqual(code, 0)
+        user_message = chat_mock.call_args.kwargs["messages"][1]["content"]
+        self.assertNotIn("sk-live-abcdef123456", user_message)
+        self.assertIn("***redacted***", user_message)
+
+    def test_unexpected_error_still_exits_zero_and_posts_failure(self):
+        with patch.object(pr_review, "fetch_pr", side_effect=RuntimeError("boom")), patch.object(
+            pr_review, "post_comment"
+        ) as post_mock:
+            code = self.run_main(BASE_ENV)
+        self.assertEqual(code, 0)
+        body = post_mock.call_args.args[3]
+        self.assertIn("could not be completed", body)
+        self.assertIn("boom", body)
 
 
 class CallReviewModelTest(unittest.TestCase):
