@@ -20,17 +20,6 @@
   </a>
 </p>
 
-## What it is
-
-Most AI assistants are general purpose; hackathons are not. chaos-harness is a
-small agent shaped around how hackathons work:
-
-- 🤖 **Agent with file tools** — reads, lists, edits and writes files in your workspace (path-confined)
-- 🧠 **Bring your own model** — any OpenAI-compatible `POST /chat/completions` API works
-- 🖥️ **Interactive TUI + one-shot mode** — full-screen app on a TTY, plain loop when piped
-- 🎨 **Themable** — color themes plus an animated mascot (`fire`, `ocean`, `forest`, `sunset`, `mono`)
-- 🤝 **Automated PR reviews** — every PR gets a review comment from a Mistral model
-
 ## Quickstart
 
 ```bash
