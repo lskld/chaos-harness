@@ -97,6 +97,29 @@ oversized files/results are capped. Optional config keys (all have defaults):
 `"workspace_root"`, `"max_file_bytes"` (200000), `"max_result_bytes"` (20000),
 `"max_tool_rounds"` (10, the tool-loop iteration cap per turn).
 
+## Automatic PR review
+
+Every pull request gets an automated review comment from a Mistral model
+(default `mistral-large-latest`, the current Mistral Large 4). The
+`PR review` workflow (`.github/workflows/pr-review.yml`) fetches the PR diff
+via the GitHub API, sends it together with `AGENTS.md` to
+`https://api.mistral.ai/v1/chat/completions` (script:
+`.github/scripts/pr_review.py`, which reuses `chaos.llm.chat`), and posts the
+review as a PR comment: a verdict (approve / changes requested / comment), a
+summary, and findings with `file:line` references. It runs on `opened`,
+`synchronize` and `reopened`.
+
+Setup (repo admin, once):
+
+1. Add a `MISTRAL_API_KEY` secret (Settings → Secrets and variables → Actions).
+2. Optionally set repo variables `REVIEW_MODEL` (any Mistral model id, e.g. a
+   pinned dated id) and `MISTRAL_BASE_URL` (defaults to `https://api.mistral.ai/v1`).
+
+The review is advisory: it comments on the PR but does not block merging —
+you (or an agent) verify the findings and fix what needs fixing before merge.
+PRs from forks skip the review automatically (secrets are not exposed to
+them), so the check stays green for them.
+
 ## Development
 
 ```bash

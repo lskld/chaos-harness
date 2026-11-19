@@ -39,6 +39,7 @@ workspace via function tools.
   holds the file tools (`read_file`, `list_files`, `edit_file`, `write_file`).
   New tool families (e.g. shell) add a module here plus one import in `__init__.py`.
 - `tests/` — unittest suite; HTTP is mocked, no API key needed.
+- `.github/workflows/` + `.github/scripts/pr_review.py` — CI and the automated PR review (Mistral API, posts a review comment per PR); its tests live in `tests/test_pr_review.py`.
 
 ## Commands
 
