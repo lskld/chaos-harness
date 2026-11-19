@@ -376,6 +376,16 @@ class CallReviewModelTest(unittest.TestCase):
         self.assertEqual(kwargs["max_tokens"], 4096)
         self.assertGreater(kwargs["timeout"], 0)
 
+    def test_empty_reply_is_retried(self):
+        with patch.object(
+            pr_review,
+            "chat_stream",
+            side_effect=[Mock(text=""), Mock(text='{"verdict": "approve", "summary": "ok", "findings": []}')],
+        ) as stream_mock, patch.object(pr_review.time, "sleep"):
+            reply = pr_review.call_review_model(base_url="u", api_key="k", model="m", messages=[])
+        self.assertEqual(stream_mock.call_count, 2)
+        self.assertIn("approve", reply.text)
+
 
 if __name__ == "__main__":
     unittest.main()

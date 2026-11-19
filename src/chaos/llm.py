@@ -106,6 +106,12 @@ def chat_stream(*, base_url, api_key, model, messages, tools=None, timeout=120, 
             content_parts.append(content)
             if on_delta is not None:
                 on_delta("content", content)
+        elif isinstance(content, list):
+            text = _content_text(content)
+            if text:
+                content_parts.append(text)
+                if on_delta is not None:
+                    on_delta("content", text)
         reasoning = delta.get("reasoning") or delta.get("reasoning_content") or delta.get("thinking")
         if isinstance(reasoning, str) and reasoning:
             reasoning_parts.append(reasoning)

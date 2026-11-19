@@ -233,6 +233,17 @@ class ChatStreamTest(unittest.TestCase):
         self.assertTrue(post.call_args.kwargs["json"]["stream"])
         self.assertTrue(post.call_args.kwargs["stream"])
 
+    def test_stream_content_as_list_of_text_parts_is_accumulated(self):
+        lines = [
+            'data: {"choices": [{"delta": {"content": [{"type": "text", "text": "hel"}]}}]}',
+            'data: {"choices": [{"delta": {"content": [{"type": "text", "text": "lo"}]}}]}',
+            "data: [DONE]",
+        ]
+        with patch("chaos.llm.requests.post") as post:
+            post.return_value = sse_response(lines)
+            reply = chat_stream(base_url="https://x/v1", api_key="k", model="m", messages=[])
+        self.assertEqual(reply.text, "hello")
+
     def test_max_tokens_is_sent_only_when_set(self):
         with patch("chaos.llm.requests.post") as post:
             response = fake_response(payload=payload(content="hi"))

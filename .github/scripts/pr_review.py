@@ -306,7 +306,7 @@ def call_review_model(*, base_url, api_key, model, messages, timeout=200, attemp
     last_error = None
     for attempt in range(1, attempts + 1):
         try:
-            return chat_stream(
+            reply = chat_stream(
                 base_url=base_url,
                 api_key=api_key,
                 model=model,
@@ -319,6 +319,14 @@ def call_review_model(*, base_url, api_key, model, messages, timeout=200, attemp
             print(f"review attempt {attempt}/{attempts} failed: {exc}")
             if attempt < attempts:
                 time.sleep(10 * attempt)
+            continue
+        if not reply.text.strip():
+            last_error = LLMError("model returned an empty reply")
+            print(f"review attempt {attempt}/{attempts} failed: empty reply")
+            if attempt < attempts:
+                time.sleep(10 * attempt)
+            continue
+        return reply
     raise last_error
 
 
