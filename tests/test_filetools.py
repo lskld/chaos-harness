@@ -56,6 +56,31 @@ class FileToolsTest(unittest.TestCase):
         self.assertTrue(result["truncated"])
         self.assertLessEqual(len(result["content"].encode("utf-8")), 10)
 
+    def test_read_file_over_size_limit_reads_only_the_head(self):
+        (self.root / "big.log").write_text("line\n" * 5000, encoding="utf-8")
+        ctx = ToolContext(root=self.root, max_file_bytes=1000)
+        result = json.loads(execute("read_file", json.dumps({"path": "big.log"}), ctx))
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["truncated"])
+        self.assertLessEqual(len(result["content"].encode("utf-8")), 1000)
+        self.assertEqual(result["total_lines"], 5000)
+
+    def test_read_file_over_size_limit_still_applies_offset_and_limit(self):
+        (self.root / "big.log").write_text("a\nb\nc\nd\ne\n", encoding="utf-8")
+        ctx = ToolContext(root=self.root, max_file_bytes=6)
+        result = json.loads(execute("read_file", json.dumps({"path": "big.log", "offset": 2, "limit": 2}), ctx))
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["truncated"])
+        self.assertEqual(result["content"], "b\nc")
+        self.assertEqual(result["total_lines"], 5)
+
+    def test_read_file_over_size_limit_refuses_binary(self):
+        (self.root / "big.bin").write_bytes(b"PK\x00\x03" + b"x" * 5000)
+        ctx = ToolContext(root=self.root, max_file_bytes=100)
+        result = json.loads(execute("read_file", json.dumps({"path": "big.bin"}), ctx))
+        self.assertFalse(result["ok"])
+        self.assertIn("binary", result["error"])
+
     def test_list_files_lists_and_filters(self):
         result = self.call("list_files", {"path": "."})
         self.assertTrue(result["ok"])

@@ -95,6 +95,37 @@ def _write_text(ctx, path, text):
         raise ToolError(f"cannot write {display_path(ctx, path)}: {exc.strerror or exc}") from exc
 
 
+def _read_head(ctx, path, max_bytes):
+    """Stream the file in chunks: keep at most the first max_bytes and count the
+    total lines, so an over-limit file is never loaded into memory."""
+    fd = open_checked(ctx, path, os.O_RDONLY)
+    head = bytearray()
+    total_lines = 0
+    seen = 0
+    last = b""
+    try:
+        with os.fdopen(fd, "rb") as handle:
+            while True:
+                chunk = handle.read(1024 * 1024)
+                if not chunk:
+                    break
+                if seen < 8192 and b"\0" in chunk[: 8192 - seen]:
+                    raise ToolError(
+                        f"{display_path(ctx, path)} looks like a binary file; refusing to read it"
+                    )
+                seen += len(chunk)
+                total_lines += chunk.count(b"\n")
+                last = chunk[-1:]
+                remaining = max_bytes - len(head)
+                if remaining > 0:
+                    head.extend(chunk[:remaining])
+    except OSError as exc:
+        raise ToolError(f"cannot read {display_path(ctx, path)}: {exc.strerror or exc}") from exc
+    if last and last != b"\n":
+        total_lines += 1
+    return bytes(head), total_lines
+
+
 def _check_size(ctx, path, size):
     if size > ctx.max_file_bytes:
         raise ToolError(
@@ -117,28 +148,32 @@ def read_file(args, ctx: ToolContext):
     path = resolve_path(ctx, args.get("path"))
     if not path.is_file():
         raise ToolError(f"{display_path(ctx, path)} is not a file")
-    text = _read_text(ctx, path)
-    lines = text.splitlines()
     offset = args.get("offset", 1)
     limit = args.get("limit")
     if not isinstance(offset, int) or isinstance(offset, bool) or offset < 1:
         raise ToolError("offset must be a positive integer")
     if limit is not None and (not isinstance(limit, int) or isinstance(limit, bool) or limit < 1):
         raise ToolError("limit must be a positive integer")
+    over_limit = path.stat().st_size > ctx.max_file_bytes
+    raw, total_lines = _read_head(ctx, path, ctx.max_file_bytes)
+    if over_limit:
+        text = raw.decode("utf-8", errors="ignore")
+    else:
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ToolError(f"{display_path(ctx, path)} is not valid UTF-8 text: {exc}") from exc
+        total_lines = len(text.splitlines())
+    lines = text.splitlines()
     selected = lines[offset - 1 : offset - 1 + limit if limit is not None else None]
-    content = "\n".join(selected)
-    truncated = False
-    if len(content.encode("utf-8")) > ctx.max_file_bytes:
-        content = content.encode("utf-8")[: ctx.max_file_bytes].decode("utf-8", errors="ignore")
-        truncated = True
     return {
         "ok": True,
         "path": display_path(ctx, path),
-        "total_lines": len(lines),
+        "total_lines": total_lines,
         "offset": offset,
         "limit": limit,
-        "truncated": truncated,
-        "content": content,
+        "truncated": over_limit,
+        "content": "\n".join(selected),
     }
 
 
