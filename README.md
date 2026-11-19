@@ -117,16 +117,17 @@ Setup (repo admin, once):
 
 The review is advisory: it comments on the PR but does not block merging —
 you (or an agent) verify the findings and fix what needs fixing before merge.
-PRs from forks skip the review automatically (secrets are not exposed to
-them), so the check stays green for them.
+PRs from forks are skipped by default (set the `REVIEW_FORKS` repo variable to
+`true` to review them too, using the repo's key).
 
-Security notes: the workflow checks out the PR **base** branch (not the PR
-head), so untrusted PR code never runs with the secret in its environment —
-the script only reads the diff via the GitHub API. Lines in the diff that look
-like credentials (`api_key = ...`, `token: ...`, etc.) are redacted before
-the diff is sent to Mistral; note that the diff is still transmitted to
-`api.mistral.ai` as part of the review. PR- and model-derived text is
-markdown-escaped before it is rendered into the bot comment.
+Security notes: the workflow uses the `pull_request_target` event but checks
+out the PR **base** branch (not the PR head), so untrusted PR code never runs
+with the secret in its environment — the script only reads the diff via the
+GitHub API. Lines in the diff that look like credentials (`api_key = ...`,
+`token: ...`, etc.) are redacted before the diff is sent to Mistral; note that
+the diff is still transmitted to `api.mistral.ai` as part of the review.
+PR- and model-derived text is markdown-escaped before it is rendered into the
+bot comment.
 
 ## Development
 
