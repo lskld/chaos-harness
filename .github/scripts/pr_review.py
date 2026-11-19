@@ -1,9 +1,10 @@
 """Automated PR review for chaos-harness.
 
 Runs in the pr-review workflow: fetches the PR diff from the GitHub API, asks
-a Mistral model (OpenAI-compatible chat completions, via chaos.llm.chat) to
-review it against the repo conventions in AGENTS.md, and posts the review as a
-PR comment. Advisory only — it comments on the PR but never blocks merging.
+a Mistral model (OpenAI-compatible chat completions, via chaos.llm.chat_stream) to
+review it against the repo conventions in AGENTS.md (streaming, so a slow
+model still yields bytes and does not read-timeout), and posts the review as
+a PR comment. Advisory only — it comments on the PR but never blocks merging.
 
 Environment:
   GITHUB_REPOSITORY  owner/repo (set by Actions)
@@ -23,7 +24,7 @@ import time
 
 import requests
 
-from chaos.llm import LLMError, chat
+from chaos.llm import LLMError, chat_stream
 
 GITHUB_API = "https://api.github.com"
 DEFAULT_BASE_URL = "https://api.mistral.ai/v1"
@@ -301,11 +302,18 @@ def post_comment(repo, number, token, body):
     return response.json()
 
 
-def call_review_model(*, base_url, api_key, model, messages, timeout=200, attempts=3):
+def call_review_model(*, base_url, api_key, model, messages, timeout=200, attempts=3, max_tokens=4096):
     last_error = None
     for attempt in range(1, attempts + 1):
         try:
-            return chat(base_url=base_url, api_key=api_key, model=model, messages=messages, timeout=timeout)
+            return chat_stream(
+                base_url=base_url,
+                api_key=api_key,
+                model=model,
+                messages=messages,
+                timeout=timeout,
+                max_tokens=max_tokens,
+            )
         except LLMError as exc:
             last_error = exc
             print(f"review attempt {attempt}/{attempts} failed: {exc}")

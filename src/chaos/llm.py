@@ -50,7 +50,7 @@ def chat(*, base_url, api_key, model, messages, tools=None, timeout=120):
     )
 
 
-def chat_stream(*, base_url, api_key, model, messages, tools=None, timeout=120, on_delta=None):
+def chat_stream(*, base_url, api_key, model, messages, tools=None, timeout=120, on_delta=None, max_tokens=None):
     """Streaming variant of chat(): parses SSE chunks and calls on_delta(field, text) for each
     streamed chunk (field is "content" or "reasoning"); returns the accumulated Reply.
 
@@ -64,6 +64,8 @@ def chat_stream(*, base_url, api_key, model, messages, tools=None, timeout=120, 
     payload = {"model": model, "messages": messages, "stream": True}
     if tools:
         payload["tools"] = tools
+    if max_tokens is not None:
+        payload["max_tokens"] = max_tokens
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=timeout, stream=True)
     except requests.RequestException as exc:

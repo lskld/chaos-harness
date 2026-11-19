@@ -241,7 +241,7 @@ class MainTest(unittest.TestCase):
 
     def test_skips_without_api_key(self):
         env = {k: v for k, v in BASE_ENV.items() if k != "MISTRAL_API_KEY"}
-        with patch.object(pr_review, "chat") as chat_mock, patch.object(pr_review, "post_comment") as post_mock:
+        with patch.object(pr_review, "chat_stream") as chat_mock, patch.object(pr_review, "post_comment") as post_mock:
             code = self.run_main(env)
         self.assertEqual(code, 0)
         chat_mock.assert_not_called()
@@ -256,7 +256,7 @@ class MainTest(unittest.TestCase):
         with patch.object(pr_review, "fetch_pr", return_value=make_pr()), patch.object(
             pr_review, "fetch_diff", return_value="diff"
         ), patch.object(pr_review, "read_agents_md", return_value="agents"), patch.object(
-            pr_review, "chat", return_value=Mock(text=json.dumps(review_payload))
+            pr_review, "chat_stream", return_value=Mock(text=json.dumps(review_payload))
         ) as chat_mock, patch.object(
             pr_review, "post_comment"
         ) as post_mock:
@@ -276,7 +276,7 @@ class MainTest(unittest.TestCase):
         with patch.object(pr_review, "fetch_pr", return_value=make_pr()), patch.object(
             pr_review, "fetch_diff", return_value="d"
         ), patch.object(pr_review, "read_agents_md", return_value=""), patch.object(
-            pr_review, "chat", return_value=Mock(text='{"verdict": "approve"}')
+            pr_review, "chat_stream", return_value=Mock(text='{"verdict": "approve"}')
         ) as chat_mock, patch.object(
             pr_review, "post_comment"
         ):
@@ -290,7 +290,7 @@ class MainTest(unittest.TestCase):
         with patch.object(pr_review, "fetch_pr", return_value=make_pr()), patch.object(
             pr_review, "fetch_diff", return_value="d"
         ), patch.object(pr_review, "read_agents_md", return_value=""), patch.object(
-            pr_review, "chat", side_effect=LLMError("API error 500")
+            pr_review, "chat_stream", side_effect=LLMError("API error 500")
         ), patch.object(pr_review, "post_comment") as post_mock, patch.object(pr_review.time, "sleep"):
             code = self.run_main(BASE_ENV)
         self.assertEqual(code, 0)
@@ -303,7 +303,7 @@ class MainTest(unittest.TestCase):
             pr_review, "fetch_diff", return_value="d"
         ), patch.object(pr_review, "read_agents_md", return_value=""), patch.object(
             pr_review,
-            "chat",
+            "chat_stream",
             side_effect=[LLMError("ReadTimeout"), Mock(text='{"verdict": "approve", "summary": "ok", "findings": []}')],
         ) as chat_mock, patch.object(
             pr_review, "post_comment"
@@ -322,7 +322,7 @@ class MainTest(unittest.TestCase):
         with patch.object(pr_review, "fetch_pr", return_value=make_pr()), patch.object(
             pr_review, "fetch_diff", return_value="d"
         ), patch.object(pr_review, "read_agents_md", return_value=""), patch.object(
-            pr_review, "chat", return_value=Mock(text="not json at all")
+            pr_review, "chat_stream", return_value=Mock(text="not json at all")
         ), patch.object(
             pr_review, "post_comment"
         ) as post_mock:
@@ -335,7 +335,7 @@ class MainTest(unittest.TestCase):
         with patch.object(pr_review, "fetch_pr", return_value=make_pr()), patch.object(
             pr_review, "fetch_diff", return_value='api_key = "sk-live-abcdef123456"\n'
         ), patch.object(pr_review, "read_agents_md", return_value=""), patch.object(
-            pr_review, "chat", return_value=Mock(text='{"verdict": "approve"}')
+            pr_review, "chat_stream", return_value=Mock(text='{"verdict": "approve"}')
         ) as chat_mock, patch.object(
             pr_review, "post_comment"
         ):
@@ -358,7 +358,7 @@ class MainTest(unittest.TestCase):
 
 class CallReviewModelTest(unittest.TestCase):
     def test_raises_last_error_after_all_attempts(self):
-        with patch.object(pr_review, "chat", side_effect=[LLMError("t1"), LLMError("t2")]), patch.object(
+        with patch.object(pr_review, "chat_stream", side_effect=[LLMError("t1"), LLMError("t2")]), patch.object(
             pr_review.time, "sleep"
         ):
             with self.assertRaises(LLMError) as ctx:
@@ -366,6 +366,15 @@ class CallReviewModelTest(unittest.TestCase):
                     base_url="u", api_key="k", model="m", messages=[], timeout=1, attempts=2
                 )
         self.assertIn("t2", str(ctx.exception))
+
+    def test_streams_with_a_max_tokens_cap(self):
+        with patch.object(
+            pr_review, "chat_stream", return_value=Mock(text='{"verdict": "approve"}')
+        ) as stream_mock:
+            pr_review.call_review_model(base_url="u", api_key="k", model="m", messages=[])
+        kwargs = stream_mock.call_args.kwargs
+        self.assertEqual(kwargs["max_tokens"], 4096)
+        self.assertGreater(kwargs["timeout"], 0)
 
 
 if __name__ == "__main__":

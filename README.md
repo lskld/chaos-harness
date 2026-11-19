@@ -104,7 +104,7 @@ Every pull request gets an automated review comment from a Mistral model
 `PR review` workflow (`.github/workflows/pr-review.yml`) fetches the PR diff
 via the GitHub API, sends it together with `AGENTS.md` to
 `https://api.mistral.ai/v1/chat/completions` (script:
-`.github/scripts/pr_review.py`, which reuses `chaos.llm.chat`), and posts the
+`.github/scripts/pr_review.py`, which reuses the streaming `chaos.llm.chat_stream`), and posts the
 review as a PR comment: a verdict (approve / changes requested / comment), a
 summary, and findings with `file:line` references. It runs on `opened`,
 `synchronize` and `reopened`.
