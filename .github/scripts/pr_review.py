@@ -302,7 +302,7 @@ def post_comment(repo, number, token, body):
     return response.json()
 
 
-def call_review_model(*, base_url, api_key, model, messages, timeout=200, attempts=3, max_tokens=4096):
+def call_review_model(*, base_url, api_key, model, messages, timeout=200, attempts=3):
     last_error = None
     for attempt in range(1, attempts + 1):
         try:
@@ -312,7 +312,6 @@ def call_review_model(*, base_url, api_key, model, messages, timeout=200, attemp
                 model=model,
                 messages=messages,
                 timeout=timeout,
-                max_tokens=max_tokens,
             )
         except LLMError as exc:
             last_error = exc
@@ -382,6 +381,7 @@ def run():
         post_comment(repo, number, token, render_error(model, f"review request failed: {exc}"))
         print(f"review failed: {exc}")
         return 0
+    print(f"review reply: {len(reply.text)} chars ({len(reply.reasoning)} reasoning chars)")
 
     raw_text = None
     try:

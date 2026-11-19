@@ -367,13 +367,13 @@ class CallReviewModelTest(unittest.TestCase):
                 )
         self.assertIn("t2", str(ctx.exception))
 
-    def test_streams_with_a_max_tokens_cap(self):
+    def test_uses_streaming_chat(self):
         with patch.object(
             pr_review, "chat_stream", return_value=Mock(text='{"verdict": "approve"}')
         ) as stream_mock:
             pr_review.call_review_model(base_url="u", api_key="k", model="m", messages=[])
         kwargs = stream_mock.call_args.kwargs
-        self.assertEqual(kwargs["max_tokens"], 4096)
+        self.assertNotIn("max_tokens", kwargs)
         self.assertGreater(kwargs["timeout"], 0)
 
     def test_empty_reply_is_retried(self):
