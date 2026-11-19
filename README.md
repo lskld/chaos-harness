@@ -53,50 +53,6 @@ overrides keys of the selected preset — all keys are optional:
 }
 ```
 
-Values are Rich styles (`"#ff87a2"`, `"bold #ff4040"`, `"italic #c4a3a3"`).
-Keys: `background` (app background), `banner` (title), `mascot`, `prompt`
-(input border), `user`, `assistant`, `error`, `info`, `thinking`
-(thought-process dropdown).
-
-`chaos` takes over the whole terminal (alternate screen): a top bar with the
-current model and an evil fireball mascot top-right — while the model thinks it
-bobs up and down, cycles thinking faces, and shows a `thinking…` spinner line below
-it. Below that: a scrollable chat and an input line docked at the bottom. Each
-answer is preceded by a collapsed `▶ thought process` dropdown — click it to
-expand and watch the turn live: the model's reasoning streamed token by token
-(when the provider streams it), every tool call as it is made
-(`⚒ edit_file … …` while running, then its result with a unified diff);
-replies render as markdown below the dropdown. Streaming uses the API's
-`stream: true` SSE mode with a fallback to plain completions.
-Commands: `/help` (lists them all), `/exit` (or ctrl+q), `/clear`,
-`/model [provider/model]`, `/theme`.
-`/theme` opens a menu you navigate with ↑/↓ + enter (esc closes). Built-in themes:
-`fire` (default), `ocean`, `forest`, `sunset`, `mono` — switching re-themes the
-whole app live and **saves the choice** to `~/.chaos/config.json` (`theme_name`),
-so the app reopens with your theme; `/theme ocean` also works directly. When
-stdin is piped it falls back to a plain print loop; `chaos "prompt"` stays
-one-shot and pipe-friendly (one-shot prints only the final reply, no tool output).
-
-## Tools (file editing)
-
-The agent can read and edit your code through function tools, shown live in the
-turn's `thought process` dropdown as `⚒ <tool> <path>` lines with a unified diff
-for every change:
-
-- `read_file(path, offset?, limit?)` — read a UTF-8 text file (optional line window)
-- `list_files(path?, pattern?)` — list files under a directory, glob-filtered
-- `edit_file(path, old_str, new_str)` — exact search/replace; `old_str` must match
-  exactly once, otherwise the edit is refused and the model re-reads the file
-- `write_file(path, content, overwrite?)` — create a file; overwriting an existing
-  file requires `overwrite: true`
-
-Safety: all tool paths are resolved against the **workspace root** (the directory
-you launched `chaos` from, or `workspace_root` in the config) and anything outside
-it — including symlink escapes and absolute paths — is refused. Binary files and
-oversized files/results are capped. Optional config keys (all have defaults):
-`"workspace_root"`, `"max_file_bytes"` (200000), `"max_result_bytes"` (20000),
-`"max_tool_rounds"` (10, the tool-loop iteration cap per turn).
-
 ## Automatic PR review
 
 Every pull request gets an automated review comment from a Mistral model
@@ -108,32 +64,6 @@ via the GitHub API, sends it together with `AGENTS.md` to
 review as a PR comment: a verdict (approve / changes requested / comment), a
 summary, and findings with `file:line` references. It runs on `opened`,
 `synchronize` and `reopened`.
-
-Setup (repo admin, once):
-
-1. Add a `MISTRAL_API_KEY` secret (Settings → Secrets and variables → Actions).
-2. Optionally set repo variables `REVIEW_MODEL` (any Mistral model id, e.g. a
-   pinned dated id) and `MISTRAL_BASE_URL` (defaults to `https://api.mistral.ai/v1`).
-
-You can also re-run a review manually: Actions → "PR review" → Run workflow,
-passing the PR number (also useful to test the workflow on the PR that
-introduces it, before the workflow exists on the default branch).
-
-The review is advisory: it comments on the PR but does not block merging —
-you (or an agent) verify the findings and fix what needs fixing before merge.
-PRs from forks skip the review automatically (GitHub withholds secrets from
-them), so the check stays green for those.
-
-Security notes: the `pull_request` event never exposes secrets to PRs from
-forks (GitHub withholds them there), so the check just skips for those. For
-PRs from branches in this repo the workflow code itself runs with the secret
-in the environment — the standard `pull_request` caveat, acceptable when PRs
-come from trusted collaborators/agents; switch the trigger to
-`pull_request_target` (plus a base-sha checkout) if that ever changes. Lines
-in the diff that look like credentials (`api_key = ...`, `token: ...`, etc.)
-are redacted before the diff is sent to Mistral; note that the diff is still
-transmitted to `api.mistral.ai` as part of the review. PR- and model-derived
-text is markdown-escaped before it is rendered into the bot comment.
 
 ## Development
 
