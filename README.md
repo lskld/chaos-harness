@@ -113,7 +113,12 @@ Setup (repo admin, once):
 
 1. Add a `MISTRAL_API_KEY` secret (Settings → Secrets and variables → Actions).
 2. Optionally set repo variables `REVIEW_MODEL` (any Mistral model id, e.g. a
-   pinned dated id) and `MISTRAL_BASE_URL` (defaults to `https://api.mistral.ai/v1`).
+   pinned dated id), `MISTRAL_BASE_URL` (defaults to `https://api.mistral.ai/v1`)
+   and `REVIEW_FORKS=true` (to also review PRs from forks).
+
+You can also re-run a review manually: Actions → "PR review" → Run workflow,
+passing the PR number (also useful to test the workflow on the PR that
+introduces it, before the workflow exists on the default branch).
 
 The review is advisory: it comments on the PR but does not block merging —
 you (or an agent) verify the findings and fix what needs fixing before merge.

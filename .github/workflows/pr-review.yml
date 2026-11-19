@@ -3,9 +3,14 @@ name: PR review
 on:
   pull_request_target:
     types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to review (manual re-run)"
+        required: true
 
 concurrency:
-  group: pr-review-${{ github.event.pull_request.number }}
+  group: pr-review-${{ github.event.pull_request.number || github.event.inputs.pr_number }}
   cancel-in-progress: true
 
 permissions:
@@ -14,12 +19,12 @@ permissions:
 
 jobs:
   review:
-    if: github.event.pull_request.head.repo.fork == false || vars.REVIEW_FORKS == 'true'
+    if: github.event.pull_request.head.repo.fork == false || vars.REVIEW_FORKS == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.pull_request.base.sha }}
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
@@ -30,4 +35,4 @@ jobs:
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           MISTRAL_BASE_URL: ${{ vars.MISTRAL_BASE_URL || 'https://api.mistral.ai/v1' }}
           REVIEW_MODEL: ${{ vars.REVIEW_MODEL || 'mistral-large-latest' }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.inputs.pr_number }}
