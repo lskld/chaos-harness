@@ -1,5 +1,6 @@
 import io
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -77,6 +78,68 @@ class ReplCommandTest(unittest.TestCase):
             self.assertIn("yo", out)
 
 
+    def test_help_lists_commands_and_blank_lines_are_ignored(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            path.write_text(json.dumps(CFG), encoding="utf-8")
+            cfg = config_mod.load(path)
+            out = run_repl(["/help", "", "/exit"], cfg, path)
+            for cmd in ("/help", "/model", "/theme", "/clear", "/exit"):
+                self.assertIn(cmd, out)
+
+    def test_clear_empties_history(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            path.write_text(json.dumps(CFG), encoding="utf-8")
+            cfg = config_mod.load(path)
+            with patch(
+                "chaos.cli.respond", side_effect=[Reply(text="first"), Reply(text="second")]
+            ) as respond_mock:
+                out = run_repl(["hi", "/clear", "again", "/exit"], cfg, path)
+            self.assertIn("history cleared", out)
+            self.assertIn("second", out)
+            self.assertEqual(
+                respond_mock.call_args_list[1].args[2], [{"role": "user", "content": "again"}]
+            )
+
+    def test_eof_at_prompt_exits_cleanly(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            path.write_text(json.dumps(CFG), encoding="utf-8")
+            cfg = config_mod.load(path)
+            out = run_repl([], cfg, path)
+            self.assertIn("p/m", out)
+
+    def test_error_from_model_is_printed_and_message_popped(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            path.write_text(json.dumps(CFG), encoding="utf-8")
+            cfg = config_mod.load(path)
+            with patch(
+                "chaos.cli.respond", side_effect=[Exception("boom"), Reply(text="ok")]
+            ) as respond_mock:
+                out = run_repl(["hi", "again", "/exit"], cfg, path)
+            self.assertIn("error: boom", out)
+            self.assertIn("ok", out)
+            self.assertEqual(
+                respond_mock.call_args_list[1].args[2], [{"role": "user", "content": "again"}]
+            )
+
+    def test_keyboard_interrupt_during_model_call_pops_message(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            path.write_text(json.dumps(CFG), encoding="utf-8")
+            cfg = config_mod.load(path)
+            with patch(
+                "chaos.cli.respond", side_effect=[KeyboardInterrupt(), Reply(text="ok")]
+            ) as respond_mock:
+                out = run_repl(["hi", "again", "/exit"], cfg, path)
+            self.assertIn("ok", out)
+            self.assertEqual(
+                respond_mock.call_args_list[1].args[2], [{"role": "user", "content": "again"}]
+            )
+
+
 class MainTest(unittest.TestCase):
     def test_main_warns_loudly_when_workspace_root_is_home(self):
         with tempfile.TemporaryDirectory() as d:
@@ -134,6 +197,88 @@ class MainTest(unittest.TestCase):
             self.assertIn("error:", out)
             self.assertIn("cannot write example config", out)
             self.assertNotIn("Traceback", out)
+
+
+    def test_model_flag_overrides_config_default(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            path.write_text(json.dumps(CFG), encoding="utf-8")
+            buf = io.StringIO()
+            with (
+                patch("chaos.cli.respond", return_value=Reply(text="yo")) as respond_mock,
+                patch("sys.stdout", buf),
+            ):
+                rc = main(["--config", str(path), "--model", "p/m2", "hi"])
+            self.assertEqual(rc, 0)
+            self.assertEqual(respond_mock.call_args.args[1], "p/m2")
+
+    def test_one_shot_invalid_model_returns_2(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            path.write_text(json.dumps(CFG), encoding="utf-8")
+            buf = io.StringIO()
+            with (
+                patch("chaos.cli.respond") as respond_mock,
+                patch("sys.stdout", buf),
+            ):
+                rc = main(["--config", str(path), "--model", "nope/x", "hi"])
+            self.assertEqual(rc, 2)
+            self.assertIn("unknown provider", buf.getvalue())
+            respond_mock.assert_not_called()
+
+    def test_one_shot_keyboard_interrupt_returns_130(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            path.write_text(json.dumps(CFG), encoding="utf-8")
+            buf = io.StringIO()
+            with (
+                patch("chaos.cli.respond", side_effect=KeyboardInterrupt),
+                patch("sys.stdout", buf),
+            ):
+                rc = main(["--config", str(path), "hi"])
+            self.assertEqual(rc, 130)
+
+    def test_one_shot_unexpected_error_prints_error_and_returns_1(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            path.write_text(json.dumps(CFG), encoding="utf-8")
+            buf = io.StringIO()
+            with (
+                patch("chaos.cli.respond", side_effect=RuntimeError("boom")),
+                patch("sys.stdout", buf),
+            ):
+                rc = main(["--config", str(path), "hi"])
+            self.assertEqual(rc, 1)
+            self.assertIn("error: boom", buf.getvalue())
+
+    def test_main_launches_app_on_a_tty(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            path.write_text(json.dumps(CFG), encoding="utf-8")
+            buf = io.StringIO()
+            with (
+                patch.object(sys.stdin, "isatty", return_value=True),
+                patch("chaos.app.ChaosApp") as app_cls,
+                patch("sys.stdout", buf),
+            ):
+                rc = main(["--config", str(path)])
+            self.assertEqual(rc, 0)
+            app_cls.assert_called_once()
+            app_cls.return_value.run.assert_called_once()
+
+    def test_main_runs_repl_when_piped(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            path.write_text(json.dumps(CFG), encoding="utf-8")
+            buf = io.StringIO()
+            with (
+                patch.object(sys.stdin, "isatty", return_value=False),
+                patch("chaos.cli.repl") as repl_mock,
+                patch("sys.stdout", buf),
+            ):
+                rc = main(["--config", str(path)])
+            self.assertEqual(rc, 0)
+            self.assertEqual(repl_mock.call_args.args[4], str(path))
 
 
 if __name__ == "__main__":
