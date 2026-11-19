@@ -128,7 +128,7 @@ def main(argv=None):
         except Exception as exc:
             ui.print_error(console, theme, exc)
             return 1
-        console.print(reply.text)
+        console.print(reply.text, markup=False)
         return 0
     if sys.stdin.isatty():
         from .app import ChaosApp

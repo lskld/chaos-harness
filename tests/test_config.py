@@ -4,6 +4,7 @@ import stat
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from chaos import config as config_mod
 
@@ -39,6 +40,23 @@ class ConfigTest(unittest.TestCase):
                 config_mod.load(path)
             data = json.loads(path.read_text(encoding="utf-8"))
             self.assertIn("providers", data)
+
+    def test_load_raises_config_error_when_config_dir_cannot_be_created(self):
+        with tempfile.TemporaryDirectory() as d:
+            blocker = Path(d) / "blocker"
+            blocker.write_text("not a directory", encoding="utf-8")
+            with self.assertRaises(config_mod.ConfigError) as ctx:
+                config_mod.load(blocker / "config.json")
+            self.assertIn("cannot write example config", str(ctx.exception))
+
+    def test_load_raises_config_error_when_example_config_cannot_be_written(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            with patch("chaos.config._write_private", side_effect=OSError("read-only file system")):
+                with self.assertRaises(config_mod.ConfigError) as ctx:
+                    config_mod.load(path)
+            self.assertIn("cannot write example config", str(ctx.exception))
+            self.assertIn("read-only file system", str(ctx.exception))
 
     def test_example_config_uses_theme_name_not_a_filled_theme_block(self):
         with tempfile.TemporaryDirectory() as d:

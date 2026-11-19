@@ -45,8 +45,13 @@ def _tighten_permissions(path):
 def load(path=DEFAULT_CONFIG_PATH):
     path = Path(path)
     if not path.exists():
-        path.parent.mkdir(parents=True, exist_ok=True)
-        _write_private(path, json.dumps(EXAMPLE_CONFIG, indent=2) + "\n")
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            _write_private(path, json.dumps(EXAMPLE_CONFIG, indent=2) + "\n")
+        except OSError as exc:
+            raise ConfigError(
+                f"cannot write example config to {path}: {exc} — check that the directory is writable"
+            ) from exc
         raise ConfigError(
             f"no config found — wrote an example to {path}; fill in a provider, then run again"
         )
