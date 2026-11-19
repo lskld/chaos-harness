@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "chaos-harness"
 version = "0.1.0"
 description = "Hackathon-specific bring-your-own-model agent CLI, made by Team Chaos"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
     "rich>=13.0",
     "requests>=2.31",
