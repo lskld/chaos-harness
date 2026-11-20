@@ -276,6 +276,8 @@ def search_files(args, ctx: ToolContext):
             if truncated:
                 break
             full = Path(dirpath) / filename
+            if full.is_symlink():
+                continue
             rel = full.relative_to(root).as_posix()
             if not fnmatch.fnmatch(rel, include):
                 continue
@@ -285,19 +287,19 @@ def search_files(args, ctx: ToolContext):
                 if full.stat().st_size > ctx.max_file_bytes:
                     continue
                 text = _read_text(ctx, full)
-            except ToolError:
+            except (ToolError, OSError):
                 continue
             lines = text.splitlines()
             for lineno, line in enumerate(lines, start=1):
                 if regex.search(line):
+                    if len(matches) >= max_matches:
+                        truncated = True
+                        break
                     match = {"path": rel, "line": lineno, "text": line}
                     if context_lines > 0:
                         match["before"] = lines[max(0, lineno - 1 - context_lines) : lineno - 1]
                         match["after"] = lines[lineno : lineno + context_lines]
                     matches.append(match)
-                    if len(matches) >= max_matches:
-                        truncated = True
-                        break
     return {
         "ok": True,
         "path": display_path(ctx, base),

@@ -182,6 +182,33 @@ class FileToolsTest(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("outside the workspace root", result["error"])
 
+    def test_search_files_skips_symlink_escaping_root(self):
+        with tempfile.TemporaryDirectory() as outside:
+            secret = Path(outside) / "secret.py"
+            secret.write_text("beta\n", encoding="utf-8")
+            (self.root / "link.py").symlink_to(secret)
+            result = self.call("search_files", {"pattern": "beta"})
+        self.assertTrue(result["ok"])
+        self.assertEqual([m["path"] for m in result["matches"]], ["src/a.py"])
+
+    def test_search_files_broken_symlink_does_not_abort_search(self):
+        (self.root / "broken.py").symlink_to(self.root / "does-not-exist.py")
+        result = self.call("search_files", {"pattern": "beta"})
+        self.assertTrue(result["ok"])
+        self.assertEqual([m["path"] for m in result["matches"]], ["src/a.py"])
+
+    def test_search_files_truncated_only_when_matches_were_dropped(self):
+        (self.root / "many.txt").write_text("x\nx\nx\n", encoding="utf-8")
+        result = self.call("search_files", {"pattern": "x", "max_matches": 3})
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["total"], 3)
+        self.assertFalse(result["truncated"])
+        (self.root / "many.txt").write_text("x\nx\nx\nx\n", encoding="utf-8")
+        result = self.call("search_files", {"pattern": "x", "max_matches": 3})
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["total"], 3)
+        self.assertTrue(result["truncated"])
+
     def test_edit_file_replaces_once_and_returns_diff(self):
         result = self.call("edit_file", {"path": "src/a.py", "old_str": "beta", "new_str": "BETA"})
         self.assertTrue(result["ok"])
