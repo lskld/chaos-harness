@@ -390,7 +390,7 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
         async with app.run_test() as pilot:
             await type_and_submit(app, pilot, "/help")
             text = log_text(app)
-            for cmd in ("/help", "/model", "/theme", "/clear", "/exit"):
+            for cmd in ("/help", "/model", "/theme", "/deadline", "/clear", "/exit"):
                 self.assertIn(cmd, text)
 
     async def test_bottom_bar_shows_the_workspace_directory_below_the_input(self):
@@ -422,6 +422,72 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
         async with app.run_test() as pilot:
             await type_and_submit(app, pilot, "/clear")
             self.assertEqual(log_text(app).strip(), "")
+
+    async def test_deadline_from_config_shows_in_top_bar_on_start(self):
+        from datetime import datetime, timedelta
+
+        future = (datetime.now().astimezone() + timedelta(hours=3)).isoformat(timespec="seconds")
+        app = ChaosApp({**CFG, "deadline": future}, "p/m")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            self.assertRegex(str(app.query_one("#deadline", Static).render()), r"^⏳ [23]:\d{2} left$")
+
+    async def test_expired_or_missing_deadline_keeps_top_bar_empty(self):
+        from datetime import datetime, timedelta
+
+        past = (datetime.now().astimezone() - timedelta(minutes=5)).isoformat(timespec="seconds")
+        for cfg in ({**CFG, "deadline": past}, CFG):
+            app = ChaosApp(cfg, "p/m")
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                self.assertEqual(str(app.query_one("#deadline", Static).render()), "")
+
+    async def test_deadline_command_updates_top_bar_and_persists(self):
+        import json
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            path.write_text(json.dumps(CFG), encoding="utf-8")
+            app = ChaosApp(CFG, "p/m", config_path=str(path))
+            async with app.run_test() as pilot:
+                await type_and_submit(app, pilot, "/deadline 23:59")
+                self.assertRegex(
+                    str(app.query_one("#deadline", Static).render()), r"^⏳ \d{1,2}:\d{2} left$"
+                )
+                self.assertIn("deadline set to", log_text(app))
+            saved = json.loads(path.read_text(encoding="utf-8"))
+            self.assertIn("deadline", saved)
+
+    async def test_deadline_off_clears_top_bar_and_config(self):
+        import json
+        import tempfile
+        from datetime import datetime, timedelta
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            future = (datetime.now().astimezone() + timedelta(hours=1)).isoformat(timespec="seconds")
+            seeded = dict(CFG, deadline=future)
+            path.write_text(json.dumps(seeded), encoding="utf-8")
+            app = ChaosApp(seeded, "p/m", config_path=str(path))
+            async with app.run_test() as pilot:
+                await type_and_submit(app, pilot, "/deadline off")
+                self.assertEqual(str(app.query_one("#deadline", Static).render()), "")
+                self.assertIn("deadline cleared", log_text(app))
+            saved = json.loads(path.read_text(encoding="utf-8"))
+            self.assertNotIn("deadline", saved)
+
+    async def test_deadline_invalid_input_keeps_existing_deadline(self):
+        from datetime import datetime, timedelta
+
+        future = (datetime.now().astimezone() + timedelta(hours=1)).isoformat(timespec="seconds")
+        app = ChaosApp({**CFG, "deadline": future}, "p/m")
+        async with app.run_test() as pilot:
+            await type_and_submit(app, pilot, "/deadline soon")
+            self.assertIn("HH:MM", log_text(app))
+            self.assertEqual(app.cfg["deadline"], future)
 
 
 if __name__ == "__main__":

@@ -82,6 +82,20 @@ def repl(console, theme, cfg, ref, config_path=None):
                         except OSError as exc:
                             ui.print_error(console, theme, f"could not save theme to config: {exc}")
                 continue
+            if name == "/deadline":
+                value, out = commands.deadline_command(arg)
+                _print_out(console, theme, out)
+                if value is not commands.UNCHANGED:
+                    if value is None:
+                        cfg.pop("deadline", None)
+                    else:
+                        cfg["deadline"] = value
+                    if config_path is not None:
+                        try:
+                            config_mod.save(config_path, cfg)
+                        except OSError as exc:
+                            ui.print_error(console, theme, f"could not save deadline to config: {exc}")
+                continue
         messages.append({"role": "user", "content": command})
         try:
             with console.status(f"[{theme['info']}]thinking…[/]", spinner="dots"):

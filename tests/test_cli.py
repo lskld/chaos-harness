@@ -2,6 +2,7 @@ import io
 import json
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -51,6 +52,31 @@ class ReplCommandTest(unittest.TestCase):
             cfg = config_mod.load(path)
             out = run_repl(["/theme nope", "/exit"], cfg, path)
             self.assertIn("unknown theme", out)
+
+    def test_deadline_command_persists_iso_value(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            path.write_text(json.dumps(CFG), encoding="utf-8")
+            cfg = config_mod.load(path)
+            out = run_repl(["/deadline 23:59", "/exit"], cfg, path)
+            self.assertIn("deadline set to", out)
+            saved = json.loads(path.read_text(encoding="utf-8"))
+            self.assertIsNotNone(datetime.fromisoformat(saved["deadline"]).tzinfo)
+
+    def test_deadline_off_removes_key_and_invalid_keeps_it(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            seeded = dict(CFG, deadline="2026-11-20T17:00:00+01:00")
+            path.write_text(json.dumps(seeded), encoding="utf-8")
+            cfg = config_mod.load(path)
+            out = run_repl(["/deadline nope", "/exit"], cfg, path)
+            self.assertIn("HH:MM", out)
+            saved = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(saved["deadline"], "2026-11-20T17:00:00+01:00")
+            out = run_repl(["/deadline off", "/exit"], cfg, path)
+            self.assertIn("deadline cleared", out)
+            saved = json.loads(path.read_text(encoding="utf-8"))
+            self.assertNotIn("deadline", saved)
 
     def test_plain_text_still_goes_to_the_model(self):
         with tempfile.TemporaryDirectory() as d:

@@ -1,6 +1,8 @@
 import json
 import os
+import re
 import stat
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from .themes import DEFAULT_THEME_NAME, THEMES
@@ -138,3 +140,85 @@ def redact(text, secrets):
         if len(secret) >= MIN_SECRET_LENGTH:
             text = text.replace(secret, REDACTED)
     return text
+
+
+DEADLINE_USAGE = "deadline must be HH:MM, HH:MM:SS, or off"
+
+
+def resolve_deadline(arg, now=None):
+    """Resolve a /deadline arg to an absolute ISO-8601 timestamp with the local
+    UTC offset: the next occurrence of HH:MM[:SS] local time (today if still
+    ahead, otherwise tomorrow). 'off'/'clear' -> None; anything else raises
+    ConfigError naming the expected format."""
+    arg = (arg or "").strip()
+    if arg.lower() in ("off", "clear"):
+        return None
+    match = re.fullmatch(r"(\d{1,2}):(\d{2})(?::(\d{2}))?", arg)
+    if match:
+        hour, minute, second = int(match.group(1)), int(match.group(2)), int(match.group(3) or 0)
+        if hour > 23 or minute > 59 or second > 59:
+            match = None
+    if not match:
+        raise ConfigError(f"{DEADLINE_USAGE} (got {arg!r})")
+    if now is None:
+        now = datetime.now()
+    elif now.tzinfo is not None:
+        now = now.astimezone().replace(tzinfo=None)
+    candidate = now.replace(hour=hour, minute=minute, second=second, microsecond=0)
+    if candidate <= now:
+        candidate += timedelta(days=1)
+    return candidate.astimezone().isoformat(timespec="seconds")
+
+
+def parse_deadline(value):
+    """An ISO deadline string as an aware datetime; None when unset/unparseable."""
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.astimezone()
+    return parsed
+
+
+def _now_aware(now):
+    if now is None:
+        return datetime.now().astimezone()
+    return now if now.tzinfo is not None else now.astimezone()
+
+
+def deadline_remaining(value, now=None):
+    """Seconds until an ISO deadline (<= 0 when expired); None when unparseable."""
+    deadline = parse_deadline(value)
+    if deadline is None:
+        return None
+    return (deadline - _now_aware(now)).total_seconds()
+
+
+def format_remaining(total_seconds):
+    """Floor total seconds to 'H:MM' (hours not zero-padded)."""
+    hours, rem = divmod(int(total_seconds), 3600)
+    return f"{hours}:{rem // 60:02d}"
+
+
+def deadline_text(cfg, now=None):
+    """The top-bar countdown '⏳ H:MM left'; '' when unset, invalid, or expired."""
+    remaining = deadline_remaining(cfg.get("deadline"), now)
+    if remaining is None or remaining <= 0:
+        return ""
+    return f"⏳ {format_remaining(remaining)} left"
+
+
+def deadline_context(cfg, now=None):
+    """The system-prompt deadline line; '' when unset, invalid, or expired."""
+    deadline = parse_deadline(cfg.get("deadline"))
+    remaining = deadline_remaining(cfg.get("deadline"), now)
+    if deadline is None or remaining is None or remaining <= 0:
+        return ""
+    return (
+        f"Hackathon deadline: {deadline.isoformat(timespec='seconds')} — "
+        f"{format_remaining(remaining)} remaining. Factor the remaining time into your "
+        "decisions: when little time is left, prioritize a shippable demo over polish/refactors."
+    )
