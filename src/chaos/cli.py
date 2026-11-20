@@ -34,6 +34,25 @@ def _print_out(console, theme, out):
             ui.print_info(console, theme, text)
 
 
+def _ask_event_handler(console, theme):
+    """on_event for non-TUI runs: an ask_user event prints the question (and choices)
+    and reads the answer line from stdin, resolving the event's future."""
+    def on_event(event):
+        if event.get("type") != "ask_user":
+            return
+        ui.print_info(console, theme, f"chaos asks: {event.get('question', '')}")
+        choices = event.get("choices") or []
+        for index, choice in enumerate(choices, 1):
+            ui.print_info(console, theme, f"  {index}) {choice}")
+        if choices:
+            ui.print_info(console, theme, "  answer with a number or free text:")
+        future = event.get("future")
+        line = sys.stdin.readline()
+        if future is not None:
+            future.set_result(line.rstrip("\n") if line else "")
+    return on_event
+
+
 def repl(console, theme, cfg, ref, config_path=None):
     ui.print_banner(console, theme, ref)
     messages = []
@@ -99,7 +118,7 @@ def repl(console, theme, cfg, ref, config_path=None):
         messages.append({"role": "user", "content": command})
         try:
             with console.status(f"[{theme['info']}]thinking…[/]", spinner="dots"):
-                reply = respond(cfg, ref, messages)
+                reply = respond(cfg, ref, messages, on_event=_ask_event_handler(console, theme))
         except KeyboardInterrupt:
             messages.pop()
             console.print()
@@ -135,7 +154,7 @@ def main(argv=None):
     if args.prompt:
         messages = [{"role": "user", "content": args.prompt}]
         try:
-            reply = respond(cfg, ref, messages)
+            reply = respond(cfg, ref, messages, on_event=_ask_event_handler(console, theme))
         except KeyboardInterrupt:
             console.print()
             return 130
