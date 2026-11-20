@@ -52,3 +52,6 @@ workspace via function tools.
 - Config lives at `~/.chaos/config.json` (override with `--config`); never commit API keys.
 - All providers are called via the OpenAI-compatible chat-completions format.
 - Keep modules small and single-purpose; add a feature in the module that owns that concern.
+- Update `README.md` and `AGENTS.md` in the same PR whenever a change affects user-facing
+  behavior (commands, flags, config keys) or these conventions; the in-app `/help` list
+  alone is not enough.

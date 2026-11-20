@@ -47,6 +47,7 @@ Inside the CLI, slash commands:
 | `/help` | show the command list |
 | `/model [provider/model]` | pick or switch model |
 | `/theme [name]` | pick a color theme |
+| `/deadline [HH:MM\|off]` | set or clear the hackathon countdown (persisted in config, shown as `⏳ H:MM left` in the top bar) |
 | `/clear` | clear the chat |
 | `/exit` | quit |
 
