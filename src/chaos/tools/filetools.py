@@ -1,12 +1,14 @@
 import difflib
 import fnmatch
 import os
+import re
 from pathlib import Path
 
 from . import PROTECTED_DIRS, Tool, ToolContext, ToolError, display_path, open_checked, resolve_path
 
 LIST_EXCLUDED_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv"}
 LIST_MAX_ENTRIES = 500
+SEARCH_MAX_MATCHES = 200
 
 _PATH_PROPERTY = {"type": "string", "description": "path relative to the workspace root"}
 
@@ -39,6 +41,37 @@ LIST_FILES_PARAMETERS = {
         },
     },
     "required": [],
+    "additionalProperties": False,
+}
+
+SEARCH_FILES_PARAMETERS = {
+    "type": "object",
+    "properties": {
+        "pattern": {
+            "type": "string",
+            "description": "regular expression searched in file contents",
+        },
+        "path": {**_PATH_PROPERTY, "description": "directory relative to the workspace root to search in (default: .)"},
+        "include": {
+            "type": "string",
+            "description": "glob matched against the relative path, e.g. '*.py' (default: '*')",
+        },
+        "exclude": {
+            "type": "string",
+            "description": "glob of relative paths to skip, e.g. 'tests/*' (default: none)",
+        },
+        "max_matches": {
+            "type": "integer",
+            "description": f"maximum number of matches to return (default: {SEARCH_MAX_MATCHES})",
+            "minimum": 1,
+        },
+        "context_lines": {
+            "type": "integer",
+            "description": "lines of context before and after each match to include (default: 0)",
+            "minimum": 0,
+        },
+    },
+    "required": ["pattern"],
     "additionalProperties": False,
 }
 
@@ -207,6 +240,74 @@ def list_files(args, ctx: ToolContext):
     }
 
 
+def search_files(args, ctx: ToolContext):
+    pattern = args.get("pattern")
+    if not isinstance(pattern, str) or pattern == "":
+        raise ToolError("pattern must be a non-empty string")
+    try:
+        regex = re.compile(pattern)
+    except re.error as exc:
+        raise ToolError(f"invalid regular expression {pattern!r}: {exc}") from exc
+    base = resolve_path(ctx, args.get("path") or ".")
+    if not base.exists():
+        raise ToolError(f"{display_path(ctx, base)} does not exist")
+    if not base.is_dir():
+        raise ToolError(f"{display_path(ctx, base)} is not a directory")
+    include = args.get("include") or "*"
+    exclude = args.get("exclude")
+    if not isinstance(include, str) or (exclude is not None and not isinstance(exclude, str)):
+        raise ToolError("include and exclude must be strings")
+    max_matches = args.get("max_matches", SEARCH_MAX_MATCHES)
+    if not isinstance(max_matches, int) or isinstance(max_matches, bool) or max_matches < 1:
+        raise ToolError("max_matches must be a positive integer")
+    context_lines = args.get("context_lines", 0)
+    if not isinstance(context_lines, int) or isinstance(context_lines, bool) or context_lines < 0:
+        raise ToolError("context_lines must be a non-negative integer")
+    root = ctx.root.resolve()
+    matches = []
+    truncated = False
+    for dirpath, dirnames, filenames in os.walk(base):
+        if truncated:
+            break
+        dirnames[:] = sorted(
+            d for d in dirnames if d not in LIST_EXCLUDED_DIRS and d not in PROTECTED_DIRS
+        )
+        for filename in sorted(filenames):
+            if truncated:
+                break
+            full = Path(dirpath) / filename
+            rel = full.relative_to(root).as_posix()
+            if not fnmatch.fnmatch(rel, include):
+                continue
+            if exclude and fnmatch.fnmatch(rel, exclude):
+                continue
+            try:
+                if full.stat().st_size > ctx.max_file_bytes:
+                    continue
+                text = _read_text(ctx, full)
+            except ToolError:
+                continue
+            lines = text.splitlines()
+            for lineno, line in enumerate(lines, start=1):
+                if regex.search(line):
+                    match = {"path": rel, "line": lineno, "text": line}
+                    if context_lines > 0:
+                        match["before"] = lines[max(0, lineno - 1 - context_lines) : lineno - 1]
+                        match["after"] = lines[lineno : lineno + context_lines]
+                    matches.append(match)
+                    if len(matches) >= max_matches:
+                        truncated = True
+                        break
+    return {
+        "ok": True,
+        "path": display_path(ctx, base),
+        "pattern": pattern,
+        "total": len(matches),
+        "truncated": truncated,
+        "matches": matches,
+    }
+
+
 def edit_file(args, ctx: ToolContext):
     path = resolve_path(ctx, args.get("path"))
     if not path.is_file():
@@ -280,6 +381,13 @@ TOOLS = (
         "List files under a directory in the workspace, optionally filtered by a glob pattern.",
         LIST_FILES_PARAMETERS,
         list_files,
+    ),
+    Tool(
+        "search_files",
+        "Search file contents under a workspace directory with a regular expression; "
+        "returns matching lines with path and line number, optionally filtered by globs.",
+        SEARCH_FILES_PARAMETERS,
+        search_files,
     ),
     Tool(
         "edit_file",

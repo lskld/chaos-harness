@@ -12,7 +12,7 @@ from chaos.tools import ToolContext, ToolError, execute, open_checked, resolve_p
 class RegistryTest(unittest.TestCase):
     def test_schemas_cover_the_file_tools(self):
         names = {entry["function"]["name"] for entry in schemas()}
-        self.assertEqual(names, {"read_file", "list_files", "edit_file", "write_file"})
+        self.assertEqual(names, {"read_file", "list_files", "search_files", "edit_file", "write_file"})
         for entry in schemas():
             self.assertEqual(entry["type"], "function")
             self.assertIn("parameters", entry["function"])
