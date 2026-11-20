@@ -173,7 +173,7 @@ class ReplAskUserTest(unittest.TestCase):
             "type": "function",
             "function": {
                 "name": "ask_user",
-                "arguments": json.dumps({"question": "which db?", "choices": ["postgres", "sqlite"]}),
+                "arguments": json.dumps({"question": "which db?", "choices": ["1. postgres", "2. sqlite"]}),
             },
         }
 
@@ -195,6 +195,8 @@ class ReplAskUserTest(unittest.TestCase):
             self.assertIn("which db?", out)
             self.assertIn("1) postgres", out)
             self.assertIn("2) sqlite", out)
+            self.assertNotIn("1) 1.", out)
+            self.assertNotIn("2) 2.", out)
             self.assertIn("using sqlite", out)
             tool_msg = chat_mock.call_args_list[1].kwargs["messages"][3]
             self.assertIn('"answer": "sqlite"', tool_msg["content"])

@@ -129,7 +129,9 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             "type": "function",
             "function": {
                 "name": "ask_user",
-                "arguments": json.dumps({"question": "which db?", "choices": ["postgres", "sqlite"]}),
+                "arguments": json.dumps(
+                    {"question": "which db?", "choices": ["1. postgres", "2. sqlite"]}
+                ),
             },
         }
         async with app.run_test() as pilot:
@@ -149,6 +151,8 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
                 self.assertIn("which db?", text)
                 self.assertIn("1. postgres", text)
                 self.assertIn("2. sqlite", text)
+                self.assertNotIn("1. 1.", text)
+                self.assertNotIn("2. 2.", text)
                 app.query_one("#input", Input).value = "2"
                 await pilot.press("enter")
                 await app.workers.wait_for_complete()

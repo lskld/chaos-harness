@@ -1,6 +1,16 @@
 import concurrent.futures
+import re
 
 from . import Tool, ToolContext, ToolError
+
+_CHOICE_NUMBER_PREFIX = re.compile(r"^\s*\d{1,2}\s*[.)]\s+")
+
+
+def _plain_choice(choice):
+    """Drop a leading list number ('1. postgres' -> 'postgres') so the UI's own numbering
+    doesn't render twice when the model passes pre-numbered choices."""
+    stripped = _CHOICE_NUMBER_PREFIX.sub("", choice, count=1).strip()
+    return stripped or choice
 
 ASK_USER_PARAMETERS = {
     "type": "object",
@@ -35,6 +45,8 @@ def ask_user(args, ctx: ToolContext):
             raise ToolError("choices must be a list of non-empty strings")
         if not choices:
             choices = None
+        else:
+            choices = [_plain_choice(choice) for choice in choices]
     if ctx.emit is None:
         raise ToolError("ask_user needs an interactive session, but no event listener is attached")
     future = concurrent.futures.Future()

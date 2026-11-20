@@ -187,6 +187,22 @@ class AskUserTest(unittest.TestCase):
                 self.assertFalse(result["ok"])
                 self.assertIn("choices must be a list of non-empty strings", result["error"])
 
+    def test_strips_leading_list_numbers_from_choices(self):
+        with tempfile.TemporaryDirectory() as d:
+            captured = []
+
+            def emit(event):
+                captured.append(event)
+                event["future"].set_result("2")
+
+            ctx = self._ctx(d, emit)
+            args = json.dumps(
+                {"question": "q", "choices": ["1. postgres", "2) sqlite", "3.14 is not a list number"]}
+            )
+            result = json.loads(execute("ask_user", args, ctx))
+        self.assertEqual(captured[0]["choices"], ["postgres", "sqlite", "3.14 is not a list number"])
+        self.assertEqual(result, {"ok": True, "answer": "sqlite"})
+
     def test_empty_choices_list_means_no_choices(self):
         with tempfile.TemporaryDirectory() as d:
             captured = []
