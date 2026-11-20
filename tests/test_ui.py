@@ -47,6 +47,35 @@ class RenderTest(unittest.TestCase):
         rendered = ui.render_tool(config_mod.DEFAULT_THEME, event)
         self.assertIn("error: nope", rendered.renderables[1].plain)
 
+    def test_ask_user_event_renders_question_and_numbered_choices(self):
+        theme = config_mod.DEFAULT_THEME
+        rendered = ui.render_ask_user(
+            theme, {"type": "ask_user", "question": "which db?", "choices": ["postgres", "sqlite"]}
+        )
+        self.assertIsInstance(rendered, Group)
+        plain = "\n".join(part.plain for part in rendered.renderables)
+        self.assertIn("which db?", plain)
+        self.assertIn("1. postgres", plain)
+        self.assertIn("2. sqlite", plain)
+        self.assertIn("reply with a number or free text", plain)
+
+    def test_ask_user_event_without_choices_omits_the_hint(self):
+        rendered = ui.render_ask_user(config_mod.DEFAULT_THEME, {"type": "ask_user", "question": "ok?"})
+        plain = "\n".join(part.plain for part in rendered.renderables)
+        self.assertIn("ok?", plain)
+        self.assertNotIn("reply with", plain)
+
+    def test_ask_user_tool_event_renders_question_and_answer(self):
+        theme = config_mod.DEFAULT_THEME
+        event = {
+            "tool": "ask_user",
+            "arguments": {"question": "which db?"},
+            "result": {"ok": True, "answer": "sqlite"},
+        }
+        rendered = ui.render_tool(theme, event)
+        self.assertIn("ask_user which db?", rendered.renderables[0].plain)
+        self.assertIn("answer: sqlite", rendered.renderables[1].plain)
+
     def test_render_event_dispatches_on_type(self):
         theme = config_mod.DEFAULT_THEME
         round_event = ui.render_event(theme, {"type": "round", "reasoning": "hmm"})

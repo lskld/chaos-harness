@@ -1,6 +1,7 @@
 import json
 import os
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -10,9 +11,11 @@ from chaos.tools import ToolContext, ToolError, execute, open_checked, resolve_p
 
 
 class RegistryTest(unittest.TestCase):
-    def test_schemas_cover_the_file_tools(self):
+    def test_schemas_cover_all_tools(self):
         names = {entry["function"]["name"] for entry in schemas()}
-        self.assertEqual(names, {"read_file", "list_files", "search_files", "edit_file", "write_file"})
+        self.assertEqual(
+            names, {"read_file", "list_files", "search_files", "edit_file", "write_file", "ask_user"}
+        )
         for entry in schemas():
             self.assertEqual(entry["type"], "function")
             self.assertIn("parameters", entry["function"])
@@ -86,6 +89,108 @@ class RegistryTest(unittest.TestCase):
             result = execute("read_file", json.dumps({"path": "big.txt"}), ctx)
         self.assertLessEqual(len(result), 200 + 60)
         self.assertIn("truncated", result)
+
+
+class AskUserTest(unittest.TestCase):
+    def _ctx(self, d, emit):
+        return ToolContext(root=Path(d))._replace(emit=emit)
+
+    def test_emits_an_ask_user_event_and_returns_the_future_answer(self):
+        with tempfile.TemporaryDirectory() as d:
+            captured = []
+
+            def emit(event):
+                captured.append(event)
+                event["future"].set_result("postgres")
+
+            ctx = self._ctx(d, emit)
+            args = json.dumps({"question": "which db?", "choices": ["postgres", "sqlite"]})
+            result = json.loads(execute("ask_user", args, ctx))
+        self.assertEqual(result, {"ok": True, "answer": "postgres"})
+        self.assertEqual(len(captured), 1)
+        event = captured[0]
+        self.assertEqual(event["type"], "ask_user")
+        self.assertEqual(event["question"], "which db?")
+        self.assertEqual(event["choices"], ["postgres", "sqlite"])
+        self.assertIn("future", event)
+
+    def test_blocks_until_the_future_is_resolved_from_another_thread(self):
+        with tempfile.TemporaryDirectory() as d:
+            def emit(event):
+                threading.Timer(0.05, event["future"].set_result, args=("late",)).start()
+
+            ctx = self._ctx(d, emit)
+            result = json.loads(execute("ask_user", json.dumps({"question": "q"}), ctx))
+        self.assertEqual(result, {"ok": True, "answer": "late"})
+
+    def test_maps_a_choice_number_to_the_choice(self):
+        with tempfile.TemporaryDirectory() as d:
+            def emit(event):
+                event["future"].set_result(" 2 ")
+
+            ctx = self._ctx(d, emit)
+            args = json.dumps({"question": "which db?", "choices": ["postgres", "sqlite"]})
+            result = json.loads(execute("ask_user", args, ctx))
+        self.assertEqual(result["answer"], "sqlite")
+
+    def test_free_text_answer_passes_through_stripped(self):
+        with tempfile.TemporaryDirectory() as d:
+            def emit(event):
+                event["future"].set_result("  mysql  \n")
+
+            ctx = self._ctx(d, emit)
+            args = json.dumps({"question": "which db?", "choices": ["postgres", "sqlite"]})
+            result = json.loads(execute("ask_user", args, ctx))
+        self.assertEqual(result["answer"], "mysql")
+
+    def test_without_an_event_listener_errors_instead_of_hanging(self):
+        with tempfile.TemporaryDirectory() as d:
+            ctx = ToolContext(root=Path(d))
+            result = json.loads(execute("ask_user", json.dumps({"question": "q"}), ctx))
+        self.assertFalse(result["ok"])
+        self.assertIn("no event listener", result["error"])
+
+    def test_rejects_a_bad_question(self):
+        with tempfile.TemporaryDirectory() as d:
+            ctx = self._ctx(d, lambda event: event["future"].set_result("x"))
+            for args in ({"question": ""}, {"question": "   "}, {"question": 5}, {}):
+                result = json.loads(execute("ask_user", json.dumps(args), ctx))
+                self.assertFalse(result["ok"])
+                self.assertIn("question must be a non-empty string", result["error"])
+
+    def test_rejects_bad_choices(self):
+        with tempfile.TemporaryDirectory() as d:
+            ctx = self._ctx(d, lambda event: event["future"].set_result("x"))
+            for choices in ("postgres", ["ok", 5], [""], [None]):
+                args = json.dumps({"question": "q", "choices": choices})
+                result = json.loads(execute("ask_user", args, ctx))
+                self.assertFalse(result["ok"])
+                self.assertIn("choices must be a list of non-empty strings", result["error"])
+
+    def test_empty_choices_list_means_no_choices(self):
+        with tempfile.TemporaryDirectory() as d:
+            captured = []
+
+            def emit(event):
+                captured.append(event)
+                event["future"].set_result("free")
+
+            ctx = self._ctx(d, emit)
+            args = json.dumps({"question": "q", "choices": []})
+            result = json.loads(execute("ask_user", args, ctx))
+        self.assertTrue(result["ok"])
+        self.assertIsNone(captured[0]["choices"])
+
+    def test_answer_is_redacted_with_configured_secrets(self):
+        with tempfile.TemporaryDirectory() as d:
+            def emit(event):
+                event["future"].set_result("key sk-aaaabbbb1111")
+
+            ctx = self._ctx(d, emit)._replace(secrets=("sk-aaaabbbb1111",))
+            result = json.loads(execute("ask_user", json.dumps({"question": "q"}), ctx))
+        self.assertTrue(result["ok"])
+        self.assertNotIn("sk-aaaabbbb1111", result["answer"])
+        self.assertIn("***redacted***", result["answer"])
 
 
 class ResolvePathTest(unittest.TestCase):

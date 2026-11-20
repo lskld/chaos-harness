@@ -36,6 +36,7 @@ _RENDERERS = {
     "reply": ui.render_reply,
     "info": ui.render_info,
     "error": ui.render_error,
+    "ask_user": ui.render_ask_user,
 }
 
 
@@ -207,6 +208,7 @@ class ChaosApp(App):
         self._mascot_up = False
         self._face_index = 0
         self._deadline_widget = None
+        self._pending_ask = None
 
     def _cwd_text(self):
         root = str(self.workspace_root)
@@ -322,6 +324,13 @@ class ChaosApp(App):
         name, arg = commands.split(text)
         if name in commands.COMMANDS:
             self._dispatch_command(name, arg)
+            return
+        if self._pending_ask is not None:
+            pending, self._pending_ask = self._pending_ask, None
+            self._log("user", text)
+            future = pending.get("future")
+            if future is not None and not future.done():
+                future.set_result(text)
             return
         self.messages.append({"role": "user", "content": text})
         self._log("user", text)
@@ -445,6 +454,9 @@ class ChaosApp(App):
 
     def _add_process_event(self, process, event):
         process.add_event(self.ui_theme, event)
+        if event.get("type") == "ask_user":
+            self._pending_ask = event
+            self._log("ask_user", event)
         self.log_widget.scroll_end(animate=False)
 
     def _show_reply(self, reply):
@@ -453,6 +465,7 @@ class ChaosApp(App):
 
     def _fail(self, exc):
         self._set_spinner(False)
+        self._pending_ask = None
         if self.messages and self.messages[-1]["role"] == "user":
             self.messages.pop()
         self._log("error", exc)

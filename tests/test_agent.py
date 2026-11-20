@@ -278,6 +278,61 @@ class ToolLoopTest(unittest.TestCase):
             reply = respond(CFG, "p/m", messages)
         self.assertEqual(reply.text, "yo")
 
+    def test_ask_user_pauses_the_loop_and_feeds_the_answer_back_to_the_model(self):
+        messages = [{"role": "user", "content": "pick a db"}]
+        call = {
+            "id": "1",
+            "type": "function",
+            "function": {
+                "name": "ask_user",
+                "arguments": json.dumps({"question": "which db?", "choices": ["postgres", "sqlite"]}),
+            },
+        }
+        seen = []
+
+        def on_event(event):
+            seen.append(event)
+            if event.get("type") == "ask_user":
+                event["future"].set_result("2")
+
+        calls = [Reply(text="", tool_calls=(call,)), Reply(text="using sqlite")]
+        with patch("chaos.agent.chat", side_effect=calls) as chat_mock:
+            reply = respond(CFG, "p/m", messages, on_event=on_event)
+        self.assertEqual(reply.text, "using sqlite")
+        self.assertEqual(chat_mock.call_count, 2)
+        ask_events = [e for e in seen if e["type"] == "ask_user"]
+        self.assertEqual(len(ask_events), 1)
+        self.assertEqual(ask_events[0]["question"], "which db?")
+        self.assertEqual(ask_events[0]["choices"], ["postgres", "sqlite"])
+        self.assertEqual([e["type"] for e in seen], ["tool_call", "ask_user", "tool_result", "reply"])
+        tool_msg = messages[3]
+        self.assertEqual(tool_msg["role"], "tool")
+        self.assertEqual(tool_msg["name"], "ask_user")
+        self.assertIn('"ok": true', tool_msg["content"])
+        self.assertIn('"answer": "sqlite"', tool_msg["content"])
+        self.assertTrue(reply.events[0]["result"]["ok"])
+        self.assertEqual(reply.events[0]["result"]["answer"], "sqlite")
+
+    def test_ask_user_without_on_event_returns_an_error_result_instead_of_hanging(self):
+        messages = [{"role": "user", "content": "go"}]
+        call = {
+            "id": "1",
+            "type": "function",
+            "function": {"name": "ask_user", "arguments": json.dumps({"question": "q"})},
+        }
+        calls = [Reply(text="", tool_calls=(call,)), Reply(text="ok")]
+        with patch("chaos.agent.chat", side_effect=calls):
+            reply = respond(CFG, "p/m", messages)
+        self.assertEqual(reply.text, "ok")
+        self.assertIn('"ok": false', messages[3]["content"])
+        self.assertIn("no event listener", messages[3]["content"])
+
+    def test_system_prompt_tells_the_model_to_ask_instead_of_guessing(self):
+        messages = [{"role": "user", "content": "hi"}]
+        with patch("chaos.agent.chat", return_value=Reply(text="yo")):
+            respond(CFG, "p/m", messages)
+        self.assertIn("ask with ask_user instead of guessing", messages[0]["content"])
+
     def test_tool_round_limit_stops_the_loop(self):
         with tempfile.TemporaryDirectory() as d:
             cfg = {**CFG, "workspace_root": d, "max_tool_rounds": 2}

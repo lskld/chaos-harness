@@ -121,6 +121,48 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn("…", headers[0])
                 self.assertIn("+y", headers[0])
 
+    async def test_ask_user_pauses_the_run_and_the_next_input_line_answers_it(self):
+        app = ChaosApp(CFG, "p/m")
+        call = {
+            "id": "1",
+            "type": "function",
+            "function": {
+                "name": "ask_user",
+                "arguments": json.dumps({"question": "which db?", "choices": ["postgres", "sqlite"]}),
+            },
+        }
+        async with app.run_test() as pilot:
+            with patch(
+                "chaos.agent.chat_stream",
+                side_effect=[Reply(text="", tool_calls=(call,)), Reply(text="using sqlite")],
+            ):
+                app.query_one("#input", Input).focus()
+                app.query_one("#input", Input).value = "hi"
+                await pilot.press("enter")
+                for _ in range(100):
+                    await pilot.pause(0.05)
+                    if app._pending_ask is not None:
+                        break
+                self.assertIsNotNone(app._pending_ask)
+                text = log_text(app)
+                self.assertIn("which db?", text)
+                self.assertIn("1. postgres", text)
+                self.assertIn("2. sqlite", text)
+                app.query_one("#input", Input).value = "2"
+                await pilot.press("enter")
+                await app.workers.wait_for_complete()
+                await pilot.pause()
+            text = log_text(app)
+            self.assertIn("using sqlite", text)
+            self.assertIn("answer: sqlite", text)
+            roles = [m["role"] for m in app.messages]
+            self.assertEqual(roles.count("user"), 1)
+            tool_msgs = [m for m in app.messages if m.get("role") == "tool"]
+            self.assertEqual(len(tool_msgs), 1)
+            self.assertIn('"answer": "sqlite"', tool_msgs[0]["content"])
+            self.assertEqual(app.messages[-1], {"role": "assistant", "content": "using sqlite"})
+            self.assertIsNone(app._pending_ask)
+
     async def test_thought_process_dropdown_is_collapsed_by_default_and_expandable(self):
         app = ChaosApp(CFG, "p/m")
         async with app.run_test() as pilot:

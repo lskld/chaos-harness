@@ -80,6 +80,8 @@ def tool_header(event):
         bits.append(f"replace {len(str(args.get('old_str', '')))} chars")
     elif tool == "write_file":
         bits.append(f"write {len(str(args.get('content', '')))} chars")
+    elif tool == "ask_user":
+        bits.append(str(args.get("question", "")))
     return " ".join(["⚒", tool, *bits])
 
 
@@ -96,6 +98,20 @@ def render_tool(theme, event):
     diff = result.get("diff")
     if diff:
         parts.append(Text(diff, style=theme["info"]))
+    answer = result.get("answer")
+    if answer is not None:
+        parts.append(Text.from_markup(f"[{theme['info']}]  answer: {escape(str(answer))}[/]"))
+    return Group(*parts)
+
+
+def render_ask_user(theme, event):
+    question = str(event.get("question", ""))
+    parts = [Text.from_markup(f"[{theme['prompt']}]?[/] [{theme['user']}]ask: {escape(question)}[/]")]
+    choices = event.get("choices") or []
+    for index, choice in enumerate(choices, 1):
+        parts.append(Text.from_markup(f"[{theme['info']}]  {index}. {escape(str(choice))}[/]"))
+    if choices:
+        parts.append(Text.from_markup(f"[{theme['info']}]  reply with a number or free text[/]"))
     return Group(*parts)
 
 

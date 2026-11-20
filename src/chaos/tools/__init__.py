@@ -21,6 +21,7 @@ class ToolContext(NamedTuple):
     max_file_bytes: int = DEFAULT_MAX_FILE_BYTES
     max_result_bytes: int = DEFAULT_MAX_RESULT_BYTES
     secrets: tuple = ()
+    emit: Callable[[dict], None] | None = None
 
 
 class Tool(NamedTuple):
@@ -156,7 +157,7 @@ def execute(name, arguments, ctx):
     return text
 
 
-from . import filetools  # noqa: E402
+from . import askuser, filetools  # noqa: E402
 
-ALL_TOOLS = tuple(filetools.TOOLS)
+ALL_TOOLS = tuple(filetools.TOOLS) + tuple(askuser.TOOLS)
 _BY_NAME = {tool.name: tool for tool in ALL_TOOLS}
