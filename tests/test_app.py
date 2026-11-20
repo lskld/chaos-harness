@@ -385,6 +385,27 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertEqual(app.theme_name, "fire")
 
+    async def test_theme_picker_mouse_click_keeps_single_selection(self):
+        from textual.widgets import SelectionList
+
+        from chaos.app import ThemePicker
+
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test(size=(80, 24)) as pilot:
+            await type_and_submit(app, pilot, "/theme")
+            self.assertIsInstance(app.screen, ThemePicker)
+            selection_list = app.screen.query_one("#list", SelectionList)
+            self.assertEqual(selection_list.selected, ["fire"])
+            await pilot.click("#list", offset=(2, 2))
+            await pilot.pause()
+            self.assertEqual(selection_list.selected, ["ocean"])
+            await pilot.click("#list", offset=(2, 4))
+            await pilot.pause()
+            self.assertEqual(selection_list.selected, ["sunset"])
+            await pilot.press("enter")
+            await pilot.pause()
+            self.assertEqual(app.theme_name, "sunset")
+
     async def test_help_lists_commands(self):
         app = ChaosApp(CFG, "p/m")
         async with app.run_test() as pilot:
