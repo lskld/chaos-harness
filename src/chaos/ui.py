@@ -106,7 +106,7 @@ def render_tool(theme, event):
 
 def render_ask_user(theme, event):
     question = str(event.get("question", ""))
-    parts = [Text.from_markup(f"[{theme['prompt']}]?[/] [{theme['user']}]ask: {escape(question)}[/]")]
+    parts = [Text.from_markup(f"[{theme['prompt']}]?[/] [{theme['user']}]question: {escape(question)}[/]")]
     choices = event.get("choices") or []
     for index, choice in enumerate(choices, 1):
         parts.append(Text.from_markup(f"[{theme['info']}]  {index}. {escape(str(choice))}[/]"))
