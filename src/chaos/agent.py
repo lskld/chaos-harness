@@ -49,7 +49,11 @@ def respond(cfg, ref, messages, on_event=None, stream=False):
     ctx = _context(cfg)
     max_rounds = int(cfg.get("max_tool_rounds", tools_mod.DEFAULT_MAX_TOOL_ROUNDS))
     if not messages or messages[0].get("role") != "system":
-        messages.insert(0, {"role": "system", "content": SYSTEM_PROMPT.format(root=ctx.root.resolve())})
+        prompt = SYSTEM_PROMPT.format(root=ctx.root.resolve())
+        deadline_line = config_mod.deadline_context(cfg)
+        if deadline_line:
+            prompt = f"{prompt} {deadline_line}"
+        messages.insert(0, {"role": "system", "content": prompt})
     events = []
 
     def emit(event):

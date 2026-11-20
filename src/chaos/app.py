@@ -178,6 +178,7 @@ class ChaosApp(App):
     #right { width: 16; height: auto; }
     #mascot { height: 6; width: 16; text-align: right; }
     #status { height: 1; width: 16; text-align: right; padding: 0 1; }
+    #deadline { height: 1; width: 16; text-align: right; padding: 0 1; }
     #log { height: 1fr; padding: 0 2; }
     .process { margin: 0 0 0 1; border-top: none; }
     .process, .process:focus-within, .process *, .process *:hover, .process *:focus, .process *:focus-within {
@@ -205,6 +206,7 @@ class ChaosApp(App):
         self._spinner_frames = cycle("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
         self._mascot_up = False
         self._face_index = 0
+        self._deadline_widget = None
 
     def _cwd_text(self):
         root = str(self.workspace_root)
@@ -225,6 +227,7 @@ class ChaosApp(App):
             with Vertical(id="right"):
                 yield Static(ui.mascot_text(theme=self.ui_theme), id="mascot")
                 yield Static("", id="status")
+                yield Static("", id="deadline")
         yield VerticalScroll(id="log")
         with Vertical(id="bottom"):
             yield Input(placeholder="ask chaos…", id="input")
@@ -232,6 +235,8 @@ class ChaosApp(App):
 
     def on_mount(self):
         self._apply_theme()
+        self._deadline_widget = self.query_one("#deadline", Static)
+        self._update_deadline()
         self.set_interval(0.12, self._tick)
         self.query_one("#input", Input).focus()
         warning = tools_mod.root_warning(
@@ -248,7 +253,7 @@ class ChaosApp(App):
         for widget in self.query("#topbar, #topbar *, #log, #log *, #bottom, #bottom *"):
             widget.styles.background = bg
         self.query_one("#name").styles.color = _hex_color(theme["banner"], "#ffaf00")
-        for widget in self.query("#model, #tagline, #helpline, #status, #cwd"):
+        for widget in self.query("#model, #tagline, #helpline, #status, #deadline, #cwd"):
             widget.styles.color = info
         self.query_one("#input").styles.border = ("solid", _hex_color(theme["prompt"], "#00d7ff"))
         self.query_one("#mascot", Static).update(ui.mascot_text(theme=theme))
@@ -284,7 +289,12 @@ class ChaosApp(App):
     def action_exit_app(self):
         self.exit()
 
+    def _update_deadline(self):
+        if self._deadline_widget is not None and self._deadline_widget.is_mounted:
+            self._deadline_widget.update(config_mod.deadline_text(self.cfg))
+
     def _tick(self):
+        self._update_deadline()
         if not self._spinner_on:
             return
         self.query_one("#status", Static).update(f"{next(self._spinner_frames)} thinking…")
@@ -333,6 +343,8 @@ class ChaosApp(App):
             self._model_command(arg)
         elif name == "/theme":
             self._theme_command(arg)
+        elif name == "/deadline":
+            self._deadline_command(arg)
 
     def _model_command(self, arg):
         if arg:
@@ -368,6 +380,23 @@ class ChaosApp(App):
                     config_mod.save(self.config_path, self.cfg)
                 except OSError as exc:
                     self._log("error", f"could not save model to config: {exc}")
+
+    def _deadline_command(self, arg):
+        value, out = commands.deadline_command(arg)
+        for kind, payload in out:
+            self._log(kind, payload)
+        if value is commands.UNCHANGED:
+            return
+        if value is None:
+            self.cfg.pop("deadline", None)
+        else:
+            self.cfg["deadline"] = value
+        if self.config_path is not None:
+            try:
+                config_mod.save(self.config_path, self.cfg)
+            except OSError as exc:
+                self._log("error", f"could not save deadline to config: {exc}")
+        self._update_deadline()
 
     def _theme_command(self, arg):
         if not arg:

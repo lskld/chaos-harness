@@ -3,6 +3,7 @@ import os
 import stat
 import tempfile
 import unittest
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -178,6 +179,78 @@ class ConfigTest(unittest.TestCase):
             "key ***redacted*** here",
         )
         self.assertEqual(config_mod.redact("abc abc", ("abc",)), "abc abc")
+
+
+class DeadlineTest(unittest.TestCase):
+    def test_resolve_deadline_same_day(self):
+        now = datetime(2026, 11, 19, 9, 30)
+        parsed = datetime.fromisoformat(config_mod.resolve_deadline("17:00", now=now))
+        self.assertEqual(
+            (parsed.year, parsed.month, parsed.day, parsed.hour, parsed.minute, parsed.second),
+            (2026, 11, 19, 17, 0, 0),
+        )
+        self.assertIsNotNone(parsed.tzinfo)
+
+    def test_resolve_deadline_next_day_when_already_past(self):
+        now = datetime(2026, 11, 19, 18, 0)
+        parsed = datetime.fromisoformat(config_mod.resolve_deadline("17:00", now=now))
+        self.assertEqual((parsed.day, parsed.hour, parsed.minute), (20, 17, 0))
+        exactly = datetime(2026, 11, 19, 17, 0)
+        parsed = datetime.fromisoformat(config_mod.resolve_deadline("17:00", now=exactly))
+        self.assertEqual(parsed.day, 20)
+
+    def test_resolve_deadline_accepts_seconds(self):
+        now = datetime(2026, 11, 19, 9, 0)
+        parsed = datetime.fromisoformat(config_mod.resolve_deadline("17:00:30", now=now))
+        self.assertEqual(parsed.second, 30)
+
+    def test_resolve_deadline_off_and_clear(self):
+        self.assertIsNone(config_mod.resolve_deadline("off"))
+        self.assertIsNone(config_mod.resolve_deadline(" clear "))
+
+    def test_resolve_deadline_rejects_invalid_input(self):
+        for bad in ("", "soon", "25:00", "17:5", "17:00:99"):
+            with self.assertRaises(config_mod.ConfigError) as ctx:
+                config_mod.resolve_deadline(bad)
+            self.assertIn("HH:MM", str(ctx.exception))
+
+    def test_deadline_text_shows_floored_remaining(self):
+        now = datetime(2026, 11, 19, 12, 0)
+        iso = config_mod.resolve_deadline("17:00", now=now)
+        self.assertEqual(config_mod.deadline_text({"deadline": iso}, now=now), "⏳ 5:00 left")
+        later = now + timedelta(hours=2, minutes=30, seconds=59)
+        self.assertEqual(config_mod.deadline_text({"deadline": iso}, now=later), "⏳ 2:29 left")
+
+    def test_deadline_text_hidden_when_unset_invalid_or_expired(self):
+        now = datetime(2026, 11, 19, 12, 0)
+        self.assertEqual(config_mod.deadline_text({}, now=now), "")
+        self.assertEqual(config_mod.deadline_text({"deadline": "not-a-date"}, now=now), "")
+        past = (now - timedelta(minutes=1)).astimezone().isoformat(timespec="seconds")
+        self.assertEqual(config_mod.deadline_text({"deadline": past}, now=now), "")
+
+    def test_deadline_context_when_active_and_shrinking(self):
+        now = datetime(2026, 11, 19, 12, 0)
+        iso = config_mod.resolve_deadline("17:00", now=now)
+        cfg = {"deadline": iso}
+        line = config_mod.deadline_context(cfg, now=now)
+        self.assertIn("Hackathon deadline:", line)
+        self.assertIn("5:00 remaining", line)
+        later = now + timedelta(hours=2, minutes=30)
+        self.assertIn("2:30 remaining", config_mod.deadline_context(cfg, now=later))
+
+    def test_deadline_context_hidden_when_unset_invalid_or_expired(self):
+        now = datetime(2026, 11, 19, 12, 0)
+        self.assertEqual(config_mod.deadline_context({}, now=now), "")
+        self.assertEqual(config_mod.deadline_context({"deadline": "junk"}, now=now), "")
+        past = (now - timedelta(minutes=1)).astimezone().isoformat(timespec="seconds")
+        self.assertEqual(config_mod.deadline_context({"deadline": past}, now=now), "")
+
+    def test_deadline_survives_config_round_trip(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            cfg = dict(SAMPLE, deadline="2026-11-19T17:00:00+01:00")
+            config_mod.save(path, cfg)
+            self.assertEqual(config_mod.load(path)["deadline"], "2026-11-19T17:00:00+01:00")
 
 
 if __name__ == "__main__":

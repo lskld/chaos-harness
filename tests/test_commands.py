@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime
 
 from chaos import commands
 
@@ -56,6 +57,28 @@ class ThemeCommandTest(unittest.TestCase):
         self.assertIsNone(name)
         self.assertEqual(out[0][0], "error")
         self.assertIn("unknown theme", out[0][1])
+
+
+class DeadlineCommandTest(unittest.TestCase):
+    def test_sets_next_occurrence_and_reports_remaining(self):
+        now = datetime(2026, 11, 19, 9, 0)
+        value, out = commands.deadline_command("17:00", now=now)
+        self.assertEqual(datetime.fromisoformat(value).hour, 17)
+        self.assertEqual(out[0][0], "info")
+        self.assertIn(f"deadline set to {value}", out[0][1])
+        self.assertIn("8:00 left", out[0][1])
+
+    def test_off_and_clear_return_none(self):
+        for arg in ("off", "clear"):
+            value, out = commands.deadline_command(arg)
+            self.assertIsNone(value)
+            self.assertEqual(out, [("info", "deadline cleared")])
+
+    def test_invalid_input_is_unchanged_and_names_the_format(self):
+        value, out = commands.deadline_command("soon")
+        self.assertIs(value, commands.UNCHANGED)
+        self.assertEqual(out[0][0], "error")
+        self.assertIn("HH:MM", out[0][1])
 
 
 if __name__ == "__main__":
