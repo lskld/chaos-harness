@@ -115,6 +115,100 @@ class FileToolsTest(unittest.TestCase):
         result = self.call("list_files", {"path": "nope"})
         self.assertFalse(result["ok"])
 
+    def test_search_files_basic_match(self):
+        result = self.call("search_files", {"pattern": "beta"})
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["total"], 1)
+        self.assertFalse(result["truncated"])
+        self.assertEqual(result["matches"], [{"path": "src/a.py", "line": 2, "text": "beta"}])
+
+    def test_search_files_regex(self):
+        result = self.call("search_files", {"pattern": "^gam"})
+        self.assertEqual([m["line"] for m in result["matches"]], [3])
+
+    def test_search_files_include_and_exclude_globs(self):
+        result = self.call("search_files", {"pattern": ".", "include": "*.py"})
+        self.assertEqual({m["path"] for m in result["matches"]}, {"src/a.py"})
+        result = self.call("search_files", {"pattern": ".", "include": "*.py", "exclude": "src/*"})
+        self.assertEqual(result["matches"], [])
+
+    def test_search_files_max_matches_truncates(self):
+        result = self.call("search_files", {"pattern": ".", "max_matches": 2})
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["truncated"])
+        self.assertEqual(result["total"], 2)
+        self.assertEqual(len(result["matches"]), 2)
+
+    def test_search_files_context_lines(self):
+        result = self.call("search_files", {"pattern": "beta", "context_lines": 1})
+        match = result["matches"][0]
+        self.assertEqual(match["line"], 2)
+        self.assertEqual(match["before"], ["alpha"])
+        self.assertEqual(match["after"], ["gamma"])
+
+    def test_search_files_subdirectory(self):
+        result = self.call("search_files", {"pattern": "beta", "path": "src"})
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["path"], "src")
+        self.assertEqual([m["path"] for m in result["matches"]], ["src/a.py"])
+
+    def test_search_files_skips_noise_dirs_binary_and_non_utf8(self):
+        (self.root / ".git").mkdir()
+        (self.root / ".git" / "hook.py").write_text("beta\n", encoding="utf-8")
+        (self.root / "__pycache__").mkdir()
+        (self.root / "__pycache__" / "a.py").write_text("beta\n", encoding="utf-8")
+        (self.root / "bin.dat").write_bytes(b"PK\x00\x01beta")
+        (self.root / "bad.py").write_bytes("beta".encode("utf-16"))
+        (self.root / "big.log").write_text("beta\n" * 100, encoding="utf-8")
+        ctx = ToolContext(root=self.root, max_file_bytes=50)
+        result = json.loads(execute("search_files", json.dumps({"pattern": "beta"}), ctx))
+        self.assertTrue(result["ok"])
+        self.assertEqual([m["path"] for m in result["matches"]], ["src/a.py"])
+
+    def test_search_files_invalid_regex(self):
+        result = self.call("search_files", {"pattern": "["})
+        self.assertFalse(result["ok"])
+        self.assertIn("invalid regular expression", result["error"])
+
+    def test_search_files_missing_pattern_and_directory(self):
+        result = self.call("search_files", {})
+        self.assertFalse(result["ok"])
+        result = self.call("search_files", {"pattern": "x", "path": "nope"})
+        self.assertFalse(result["ok"])
+        self.assertIn("does not exist", result["error"])
+
+    def test_search_files_outside_root_rejected(self):
+        result = self.call("search_files", {"pattern": "x", "path": ".."})
+        self.assertFalse(result["ok"])
+        self.assertIn("outside the workspace root", result["error"])
+
+    def test_search_files_skips_symlink_escaping_root(self):
+        with tempfile.TemporaryDirectory() as outside:
+            secret = Path(outside) / "secret.py"
+            secret.write_text("beta\n", encoding="utf-8")
+            (self.root / "link.py").symlink_to(secret)
+            result = self.call("search_files", {"pattern": "beta"})
+        self.assertTrue(result["ok"])
+        self.assertEqual([m["path"] for m in result["matches"]], ["src/a.py"])
+
+    def test_search_files_broken_symlink_does_not_abort_search(self):
+        (self.root / "broken.py").symlink_to(self.root / "does-not-exist.py")
+        result = self.call("search_files", {"pattern": "beta"})
+        self.assertTrue(result["ok"])
+        self.assertEqual([m["path"] for m in result["matches"]], ["src/a.py"])
+
+    def test_search_files_truncated_only_when_matches_were_dropped(self):
+        (self.root / "many.txt").write_text("x\nx\nx\n", encoding="utf-8")
+        result = self.call("search_files", {"pattern": "x", "max_matches": 3})
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["total"], 3)
+        self.assertFalse(result["truncated"])
+        (self.root / "many.txt").write_text("x\nx\nx\nx\n", encoding="utf-8")
+        result = self.call("search_files", {"pattern": "x", "max_matches": 3})
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["total"], 3)
+        self.assertTrue(result["truncated"])
+
     def test_edit_file_replaces_once_and_returns_diff(self):
         result = self.call("edit_file", {"path": "src/a.py", "old_str": "beta", "new_str": "BETA"})
         self.assertTrue(result["ok"])
