@@ -1,3 +1,4 @@
+import concurrent.futures
 import json
 import tempfile
 import unittest
@@ -162,6 +163,46 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn('"answer": "sqlite"', tool_msgs[0]["content"])
             self.assertEqual(app.messages[-1], {"role": "assistant", "content": "using sqlite"})
             self.assertIsNone(app._pending_ask)
+
+    async def test_a_new_ask_event_releases_the_previous_pending_future(self):
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            process = ThoughtProcess(app.ui_theme, [])
+            first, second = concurrent.futures.Future(), concurrent.futures.Future()
+            app._add_process_event(process, {"type": "ask_user", "question": "q1", "choices": None, "future": first})
+            self.assertIs(app._pending_ask["future"], first)
+            app._add_process_event(process, {"type": "ask_user", "question": "q2", "choices": None, "future": second})
+            self.assertIs(app._pending_ask["future"], second)
+            self.assertTrue(first.done())
+            with self.assertRaises(RuntimeError):
+                first.result()
+
+    async def test_fail_releases_a_pending_ask_future(self):
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            future = concurrent.futures.Future()
+            app._pending_ask = {"type": "ask_user", "question": "q", "choices": None, "future": future}
+            app._fail(Exception("boom"))
+            self.assertIsNone(app._pending_ask)
+            self.assertTrue(future.done())
+            with self.assertRaises(Exception):
+                future.result()
+
+    async def test_exit_releases_a_pending_ask_future(self):
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            future = concurrent.futures.Future()
+            app._pending_ask = {"type": "ask_user", "question": "q", "choices": None, "future": future}
+            with patch.object(app, "exit") as exit_mock:
+                app.action_exit_app()
+            exit_mock.assert_called_once()
+            self.assertIsNone(app._pending_ask)
+            self.assertTrue(future.done())
+            with self.assertRaises(RuntimeError):
+                future.result()
 
     async def test_thought_process_dropdown_is_collapsed_by_default_and_expandable(self):
         app = ChaosApp(CFG, "p/m")

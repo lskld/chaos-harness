@@ -43,7 +43,8 @@ def ask_user(args, ctx: ToolContext):
     if answer is None:
         answer = ""
     answer = str(answer).strip()
-    if choices and answer.isdigit() and 1 <= int(answer) <= len(choices):
+    # isdecimal, not isdigit: superscripts like '²' are isdigit() but not int()-parseable
+    if choices and answer.isdecimal() and 1 <= int(answer) <= len(choices):
         answer = choices[int(answer) - 1]
     return {"ok": True, "answer": answer}
 

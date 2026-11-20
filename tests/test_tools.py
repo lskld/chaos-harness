@@ -133,6 +133,26 @@ class AskUserTest(unittest.TestCase):
             result = json.loads(execute("ask_user", args, ctx))
         self.assertEqual(result["answer"], "sqlite")
 
+    def test_non_ascii_digit_answer_passes_through_as_free_text(self):
+        with tempfile.TemporaryDirectory() as d:
+            def emit(event):
+                event["future"].set_result("\u00b2")
+
+            ctx = self._ctx(d, emit)
+            args = json.dumps({"question": "q", "choices": ["a", "b"]})
+            result = json.loads(execute("ask_user", args, ctx))
+        self.assertEqual(result, {"ok": True, "answer": "\u00b2"})
+
+    def test_out_of_range_number_passes_through_as_free_text(self):
+        with tempfile.TemporaryDirectory() as d:
+            def emit(event):
+                event["future"].set_result("9")
+
+            ctx = self._ctx(d, emit)
+            args = json.dumps({"question": "q", "choices": ["a", "b"]})
+            result = json.loads(execute("ask_user", args, ctx))
+        self.assertEqual(result, {"ok": True, "answer": "9"})
+
     def test_free_text_answer_passes_through_stripped(self):
         with tempfile.TemporaryDirectory() as d:
             def emit(event):

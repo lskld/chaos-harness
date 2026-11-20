@@ -288,8 +288,26 @@ class ChaosApp(App):
     def log_widget(self):
         return self.query_one("#log", VerticalScroll)
 
-    def action_exit_app(self):
+    def _quit(self):
+        self._release_pending_ask(RuntimeError("session ended while waiting for an answer"))
         self.exit()
+
+    def action_exit_app(self):
+        self._quit()
+
+    def _release_pending_ask(self, error=None):
+        """Resolve a still-pending ask future so a worker blocked in future.result()
+        is never left hanging; error=None resolves with an empty answer."""
+        pending, self._pending_ask = self._pending_ask, None
+        if pending is None:
+            return
+        future = pending.get("future")
+        if future is None or future.done():
+            return
+        if error is None:
+            future.set_result("")
+        else:
+            future.set_exception(error)
 
     def _update_deadline(self):
         if self._deadline_widget is not None and self._deadline_widget.is_mounted:
@@ -340,7 +358,7 @@ class ChaosApp(App):
 
     def _dispatch_command(self, name, arg):
         if name in ("/exit", "/quit"):
-            self.exit()
+            self._quit()
         elif name == "/help":
             for line in commands.HELP_LINES:
                 self._log("info", line)
@@ -455,6 +473,7 @@ class ChaosApp(App):
     def _add_process_event(self, process, event):
         process.add_event(self.ui_theme, event)
         if event.get("type") == "ask_user":
+            self._release_pending_ask(RuntimeError("ask_user superseded by a newer question"))
             self._pending_ask = event
             self._log("ask_user", event)
         self.log_widget.scroll_end(animate=False)
@@ -465,7 +484,7 @@ class ChaosApp(App):
 
     def _fail(self, exc):
         self._set_spinner(False)
-        self._pending_ask = None
+        self._release_pending_ask(exc)
         if self.messages and self.messages[-1]["role"] == "user":
             self.messages.pop()
         self._log("error", exc)
