@@ -75,6 +75,12 @@ class ListPicker(ModalScreen):
         if selection_list.highlighted is not None:
             self.dismiss(selection_list.options[selection_list.highlighted].value)
 
+    def on_selection_list_selection_toggled(self, event: SelectionList.SelectionToggled) -> None:
+        selection_list = event.selection_list
+        if event.selection.value in selection_list.selected:
+            selection_list.deselect_all()
+            selection_list.select(event.selection.value)
+
 
 class ThemePicker(ListPicker):
     def __init__(self, current, names, bg, accent):
