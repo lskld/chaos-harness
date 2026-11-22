@@ -51,13 +51,6 @@ Inside the CLI, slash commands:
 | `/clear` | clear the chat |
 | `/exit` | quit |
 
-The agent can also pause mid-run to ask you something (the `ask_user` tool, e.g.
-"which database?" with choices). In the full-screen UI the question appears in the
-log — your next input line answers it (type a choice number or free text). In piped
-or one-shot mode the question and its choices are printed and the answer is read
-from stdin. The answer comes back to the model as the tool result, so it counts
-toward `max_tool_rounds` like any other tool call.
-
 ## Config (`~/.chaos/config.json`)
 
 The file is provider-agnostic: any API with an OpenAI-compatible
