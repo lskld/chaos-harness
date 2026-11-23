@@ -166,6 +166,60 @@ class ReplCommandTest(unittest.TestCase):
             )
 
 
+class ReplAskUserTest(unittest.TestCase):
+    def _ask_call(self):
+        return {
+            "id": "1",
+            "type": "function",
+            "function": {
+                "name": "ask_user",
+                "arguments": json.dumps({"question": "which db?", "choices": ["1. postgres", "2. sqlite"]}),
+            },
+        }
+
+    def _run_with_stdin(self, stdin_text, cfg, path):
+        calls = [Reply(text="", tool_calls=(self._ask_call(),)), Reply(text="using sqlite")]
+        with (
+            patch("chaos.agent.chat", side_effect=calls) as chat_mock,
+            patch("sys.stdin", io.StringIO(stdin_text)),
+        ):
+            out = run_repl(["hi", "/exit"], cfg, path)
+        return out, chat_mock
+
+    def test_repl_prints_the_question_and_reads_a_choice_number_from_stdin(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            path.write_text(json.dumps(CFG), encoding="utf-8")
+            cfg = config_mod.load(path)
+            out, chat_mock = self._run_with_stdin("2\n", cfg, path)
+            self.assertIn("which db?", out)
+            self.assertIn("1) postgres", out)
+            self.assertIn("2) sqlite", out)
+            self.assertNotIn("1) 1.", out)
+            self.assertNotIn("2) 2.", out)
+            self.assertIn("using sqlite", out)
+            tool_msg = chat_mock.call_args_list[1].kwargs["messages"][3]
+            self.assertIn('"answer": "sqlite"', tool_msg["content"])
+
+    def test_repl_ask_user_free_text_answer_from_stdin(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            path.write_text(json.dumps(CFG), encoding="utf-8")
+            cfg = config_mod.load(path)
+            _, chat_mock = self._run_with_stdin("mysql\n", cfg, path)
+            tool_msg = chat_mock.call_args_list[1].kwargs["messages"][3]
+            self.assertIn('"answer": "mysql"', tool_msg["content"])
+
+    def test_repl_ask_user_eof_on_stdin_gives_an_empty_answer(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            path.write_text(json.dumps(CFG), encoding="utf-8")
+            cfg = config_mod.load(path)
+            _, chat_mock = self._run_with_stdin("", cfg, path)
+            tool_msg = chat_mock.call_args_list[1].kwargs["messages"][3]
+            self.assertIn('"answer": ""', tool_msg["content"])
+
+
 class MainTest(unittest.TestCase):
     def test_main_warns_loudly_when_workspace_root_is_home(self):
         with tempfile.TemporaryDirectory() as d:
@@ -276,6 +330,31 @@ class MainTest(unittest.TestCase):
                 rc = main(["--config", str(path), "hi"])
             self.assertEqual(rc, 1)
             self.assertIn("error: boom", buf.getvalue())
+
+    def test_one_shot_prints_the_question_and_reads_the_answer_from_stdin(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            path.write_text(json.dumps(CFG), encoding="utf-8")
+            buf = io.StringIO()
+            call = {
+                "id": "1",
+                "type": "function",
+                "function": {
+                    "name": "ask_user",
+                    "arguments": json.dumps({"question": "which db?", "choices": ["postgres", "sqlite"]}),
+                },
+            }
+            calls = [Reply(text="", tool_calls=(call,)), Reply(text="done with sqlite")]
+            with (
+                patch("chaos.agent.chat", side_effect=calls),
+                patch("sys.stdin", io.StringIO("2\n")),
+                patch("sys.stdout", buf),
+            ):
+                rc = main(["--config", str(path), "hi"])
+            self.assertEqual(rc, 0)
+            out = buf.getvalue()
+            self.assertIn("which db?", out)
+            self.assertIn("done with sqlite", out)
 
     def test_main_launches_app_on_a_tty(self):
         with tempfile.TemporaryDirectory() as d:
