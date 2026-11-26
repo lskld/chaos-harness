@@ -264,6 +264,20 @@ class ChatStreamTest(unittest.TestCase):
         self.assertEqual(reply.tool_calls[0]["function"]["name"], "read_file")
         self.assertEqual(reply.tool_calls[1]["function"]["name"], "list_files")
 
+    def test_hybrid_deltas_with_index_then_id_only_stay_merged(self):
+        lines = [
+            'data: {"choices": [{"delta": {"tool_calls": [{"index": 0, "id": "c1", "function": {"name": "read_file", "arguments": "{\\"path\\": "}}]}}]}',
+            'data: {"choices": [{"delta": {"tool_calls": [{"id": "c1", "function": {"arguments": "\\"a.py\\"}"}}]}}]}',
+            "data: [DONE]",
+        ]
+        with patch("chaos.llm.requests.post") as post:
+            post.return_value = sse_response(lines)
+            reply = chat_stream(base_url="https://x/v1", api_key="k", model="m", messages=[])
+        self.assertEqual(len(reply.tool_calls), 1)
+        self.assertEqual(reply.tool_calls[0]["id"], "c1")
+        self.assertEqual(reply.tool_calls[0]["function"]["name"], "read_file")
+        self.assertEqual(reply.tool_calls[0]["function"]["arguments"], '{"path": "a.py"}')
+
     def test_stream_content_as_list_of_text_parts_is_accumulated(self):
         lines = [
             'data: {"choices": [{"delta": {"content": [{"type": "text", "text": "hel"}]}}]}',

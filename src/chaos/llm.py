@@ -91,6 +91,7 @@ def chat_stream(*, base_url, api_key, model, messages, tools=None, timeout=120, 
     content_parts = []
     reasoning_parts = []
     calls = {}
+    id_aliases = {}
     fresh_key = -1
     for line in response.iter_lines(decode_unicode=True):
         if not line or not line.startswith("data:"):
@@ -121,10 +122,13 @@ def chat_stream(*, base_url, api_key, model, messages, tools=None, timeout=120, 
         for call in delta.get("tool_calls") or []:
             if not isinstance(call, dict):
                 continue
+            call_id = call.get("id")
+            if call_id and call.get("index") is not None:
+                id_aliases[call_id] = ("index", call["index"])
             if call.get("index") is not None:
                 key = ("index", call["index"])
-            elif call.get("id"):
-                key = ("id", call["id"])
+            elif call_id:
+                key = id_aliases.get(call_id, ("id", call_id))
             else:
                 key = ("fresh", fresh_key)
                 fresh_key -= 1
