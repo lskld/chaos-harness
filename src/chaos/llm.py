@@ -123,10 +123,13 @@ def chat_stream(*, base_url, api_key, model, messages, tools=None, timeout=120, 
             if not isinstance(call, dict):
                 continue
             call_id = call.get("id")
-            if call_id and call.get("index") is not None:
-                id_aliases[call_id] = ("index", call["index"])
-            if call.get("index") is not None:
-                key = ("index", call["index"])
+            index = call.get("index")
+            if call_id and index is not None:
+                id_aliases[call_id] = ("index", index)
+                if ("id", call_id) in calls and ("index", index) not in calls:
+                    calls[("index", index)] = calls.pop(("id", call_id))
+            if index is not None:
+                key = ("index", index)
             elif call_id:
                 key = id_aliases.get(call_id, ("id", call_id))
             else:
