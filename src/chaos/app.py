@@ -210,7 +210,7 @@ class ChaosApp(App):
         self._deadline_widget = None
         self._pending_ask = None
         self._busy = False
-        self._queued_input = None
+        self._queued_inputs = []
 
     def _cwd_text(self):
         root = str(self.workspace_root)
@@ -356,7 +356,7 @@ class ChaosApp(App):
 
     def _submit(self, text):
         if self._busy:
-            self._queued_input = text
+            self._queued_inputs.append(text)
             self._log("info", "still thinking — your message is queued")
             return
         self._busy = True
@@ -368,9 +368,8 @@ class ChaosApp(App):
 
     def _finish_turn(self):
         self._busy = False
-        queued, self._queued_input = self._queued_input, None
-        if queued is not None:
-            self._submit(queued)
+        if self._queued_inputs:
+            self._submit(self._queued_inputs.pop(0))
 
     def _dispatch_command(self, name, arg):
         if name in ("/exit", "/quit"):

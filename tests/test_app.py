@@ -332,22 +332,26 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
                 self.assertTrue(started.is_set())
                 app.query_one("#input", Input).value = "second"
                 await pilot.press("enter")
+                app.query_one("#input", Input).value = "third"
+                await pilot.press("enter")
                 await pilot.pause()
                 self.assertTrue(app._busy)
                 self.assertEqual(stream_mock.call_count, 1)
+                self.assertEqual(app._queued_inputs, ["second", "third"])
                 self.assertIn("queued", log_text(app))
                 release.set()
                 await app.workers.wait_for_complete()
                 await pilot.pause()
-            self.assertEqual(stream_mock.call_count, 2)
+            self.assertEqual(stream_mock.call_count, 3)
             self.assertFalse(app._busy)
-            self.assertIsNone(app._queued_input)
+            self.assertEqual(app._queued_inputs, [])
             self.assertEqual(
                 [m["role"] for m in app.messages],
-                ["system", "user", "assistant", "user", "assistant"],
+                ["system", "user", "assistant", "user", "assistant", "user", "assistant"],
             )
             self.assertEqual(
-                [m["content"] for m in app.messages if m["role"] == "user"], ["first", "second"]
+                [m["content"] for m in app.messages if m["role"] == "user"],
+                ["first", "second", "third"],
             )
 
     async def test_fail_mid_tool_loop_rolls_history_back_to_before_the_user_message(self):
