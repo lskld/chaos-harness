@@ -151,6 +151,44 @@ class ReplCommandTest(unittest.TestCase):
                 respond_mock.call_args_list[1].args[2], [{"role": "user", "content": "again"}]
             )
 
+    def test_abort_mid_tool_loop_rolls_history_back_to_before_the_user_message(self):
+        for exc in (RuntimeError("boom"), KeyboardInterrupt()):
+            with self.subTest(exc=type(exc).__name__):
+                with tempfile.TemporaryDirectory() as d:
+                    path = Path(d) / "config.json"
+                    path.write_text(json.dumps(CFG), encoding="utf-8")
+                    cfg = config_mod.load(path)
+                    calls = {"n": 0}
+
+                    def flaky(cfg, ref, messages, **kwargs):
+                        calls["n"] += 1
+                        if calls["n"] == 1:
+                            messages.append(
+                                {
+                                    "role": "assistant",
+                                    "content": "",
+                                    "tool_calls": [
+                                        {
+                                            "id": "1",
+                                            "type": "function",
+                                            "function": {"name": "list_files", "arguments": "{}"},
+                                        }
+                                    ],
+                                }
+                            )
+                            messages.append(
+                                {"role": "tool", "tool_call_id": "1", "name": "list_files", "content": "..."}
+                            )
+                            raise exc
+                        return Reply(text="ok")
+
+                    with patch("chaos.cli.respond", side_effect=flaky) as respond_mock:
+                        out = run_repl(["hi", "again", "/exit"], cfg, path)
+                    self.assertIn("ok", out)
+                    self.assertEqual(
+                        respond_mock.call_args_list[1].args[2], [{"role": "user", "content": "again"}]
+                    )
+
     def test_keyboard_interrupt_during_model_call_pops_message(self):
         with tempfile.TemporaryDirectory() as d:
             path = Path(d) / "config.json"

@@ -1,6 +1,7 @@
 import concurrent.futures
 import json
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -308,6 +309,68 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
                 await type_and_submit(app, pilot, "hi")
             self.assertIn("error: boom", log_text(app))
             self.assertEqual([m["role"] for m in app.messages], ["system"])
+
+    async def test_second_submit_while_thinking_is_queued_and_run_after(self):
+        app = ChaosApp(CFG, "p/m")
+        started = threading.Event()
+        release = threading.Event()
+
+        def fake_stream(**kwargs):
+            started.set()
+            release.wait(timeout=10)
+            return Reply(text="done")
+
+        async with app.run_test() as pilot:
+            with patch("chaos.agent.chat_stream", side_effect=fake_stream) as stream_mock:
+                app.query_one("#input", Input).focus()
+                app.query_one("#input", Input).value = "first"
+                await pilot.press("enter")
+                for _ in range(100):
+                    await pilot.pause(0.05)
+                    if started.is_set():
+                        break
+                self.assertTrue(started.is_set())
+                app.query_one("#input", Input).value = "second"
+                await pilot.press("enter")
+                app.query_one("#input", Input).value = "third"
+                await pilot.press("enter")
+                await pilot.pause()
+                self.assertTrue(app._busy)
+                self.assertEqual(stream_mock.call_count, 1)
+                self.assertEqual(app._queued_inputs, ["second", "third"])
+                self.assertIn("queued", log_text(app))
+                release.set()
+                await app.workers.wait_for_complete()
+                await pilot.pause()
+            self.assertEqual(stream_mock.call_count, 3)
+            self.assertFalse(app._busy)
+            self.assertEqual(app._queued_inputs, [])
+            self.assertEqual(
+                [m["role"] for m in app.messages],
+                ["system", "user", "assistant", "user", "assistant", "user", "assistant"],
+            )
+            self.assertEqual(
+                [m["content"] for m in app.messages if m["role"] == "user"],
+                ["first", "second", "third"],
+            )
+
+    async def test_fail_mid_tool_loop_rolls_history_back_to_before_the_user_message(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg = {**CFG, "workspace_root": d}
+            call = {
+                "id": "1",
+                "type": "function",
+                "function": {"name": "list_files", "arguments": "{}"},
+            }
+            app = ChaosApp(cfg, "p/m")
+            async with app.run_test() as pilot:
+                with patch(
+                    "chaos.agent.chat_stream",
+                    side_effect=[Reply(text="", tool_calls=(call,)), Exception("boom")],
+                ):
+                    await type_and_submit(app, pilot, "hi")
+                self.assertIn("error: boom", log_text(app))
+                self.assertEqual([m["role"] for m in app.messages], ["system"])
 
     async def test_model_command_without_arg_opens_picker(self):
         from chaos.app import ModelPicker

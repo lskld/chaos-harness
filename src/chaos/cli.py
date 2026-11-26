@@ -8,7 +8,7 @@ from . import commands
 from . import config as config_mod
 from . import tools as tools_mod
 from . import ui
-from .agent import respond
+from .agent import respond, rollback_turn
 
 
 def parse_args(argv=None):
@@ -120,11 +120,11 @@ def repl(console, theme, cfg, ref, config_path=None):
             with console.status(f"[{theme['info']}]thinking…[/]", spinner="dots"):
                 reply = respond(cfg, ref, messages, on_event=_ask_event_handler(console, theme))
         except KeyboardInterrupt:
-            messages.pop()
+            rollback_turn(messages)
             console.print()
             continue
         except Exception as exc:
-            messages.pop()
+            rollback_turn(messages)
             ui.print_error(console, theme, exc)
             continue
         for event in reply.events:
