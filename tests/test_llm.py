@@ -233,6 +233,37 @@ class ChatStreamTest(unittest.TestCase):
         self.assertTrue(post.call_args.kwargs["json"]["stream"])
         self.assertTrue(post.call_args.kwargs["stream"])
 
+    def test_indexless_tool_call_deltas_with_ids_stay_separate(self):
+        lines = [
+            'data: {"choices": [{"delta": {"tool_calls": [{"id": "c1", "function": {"name": "read_file", "arguments": "{\\"path\\": "}}]}}]}',
+            'data: {"choices": [{"delta": {"tool_calls": [{"id": "c2", "function": {"name": "list_files", "arguments": "{}"}}]}}]}',
+            'data: {"choices": [{"delta": {"tool_calls": [{"id": "c1", "function": {"arguments": "\\"a.py\\"}"}}]}}]}',
+            "data: [DONE]",
+        ]
+        with patch("chaos.llm.requests.post") as post:
+            post.return_value = sse_response(lines)
+            reply = chat_stream(base_url="https://x/v1", api_key="k", model="m", messages=[])
+        self.assertEqual(len(reply.tool_calls), 2)
+        self.assertEqual(reply.tool_calls[0]["id"], "c1")
+        self.assertEqual(reply.tool_calls[0]["function"]["name"], "read_file")
+        self.assertEqual(reply.tool_calls[0]["function"]["arguments"], '{"path": "a.py"}')
+        self.assertEqual(reply.tool_calls[1]["id"], "c2")
+        self.assertEqual(reply.tool_calls[1]["function"]["name"], "list_files")
+        self.assertEqual(reply.tool_calls[1]["function"]["arguments"], "{}")
+
+    def test_indexless_and_idless_tool_call_deltas_get_fresh_keys(self):
+        lines = [
+            'data: {"choices": [{"delta": {"tool_calls": [{"function": {"name": "read_file", "arguments": "{}"}}]}}]}',
+            'data: {"choices": [{"delta": {"tool_calls": [{"function": {"name": "list_files", "arguments": "{}"}}]}}]}',
+            "data: [DONE]",
+        ]
+        with patch("chaos.llm.requests.post") as post:
+            post.return_value = sse_response(lines)
+            reply = chat_stream(base_url="https://x/v1", api_key="k", model="m", messages=[])
+        self.assertEqual(len(reply.tool_calls), 2)
+        self.assertEqual(reply.tool_calls[0]["function"]["name"], "read_file")
+        self.assertEqual(reply.tool_calls[1]["function"]["name"], "list_files")
+
     def test_stream_content_as_list_of_text_parts_is_accumulated(self):
         lines = [
             'data: {"choices": [{"delta": {"content": [{"type": "text", "text": "hel"}]}}]}',

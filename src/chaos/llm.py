@@ -91,6 +91,7 @@ def chat_stream(*, base_url, api_key, model, messages, tools=None, timeout=120, 
     content_parts = []
     reasoning_parts = []
     calls = {}
+    fresh_key = -1
     for line in response.iter_lines(decode_unicode=True):
         if not line or not line.startswith("data:"):
             continue
@@ -120,8 +121,15 @@ def chat_stream(*, base_url, api_key, model, messages, tools=None, timeout=120, 
         for call in delta.get("tool_calls") or []:
             if not isinstance(call, dict):
                 continue
+            if call.get("index") is not None:
+                key = ("index", call["index"])
+            elif call.get("id"):
+                key = ("id", call["id"])
+            else:
+                key = ("fresh", fresh_key)
+                fresh_key -= 1
             entry = calls.setdefault(
-                call.get("index", 0),
+                key,
                 {"id": "", "type": "function", "function": {"name": "", "arguments": ""}},
             )
             if call.get("id"):
@@ -134,7 +142,7 @@ def chat_stream(*, base_url, api_key, model, messages, tools=None, timeout=120, 
     return Reply(
         text="".join(content_parts),
         reasoning="".join(reasoning_parts),
-        tool_calls=tuple(calls[index] for index in sorted(calls)),
+        tool_calls=tuple(calls.values()),
     )
 
 
