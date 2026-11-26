@@ -15,7 +15,7 @@ from . import commands
 from . import config as config_mod
 from . import tools as tools_mod
 from . import ui
-from .agent import respond
+from .agent import respond, rollback_turn
 
 
 def _hex_color(style_str, default):
@@ -209,6 +209,8 @@ class ChaosApp(App):
         self._face_index = 0
         self._deadline_widget = None
         self._pending_ask = None
+        self._busy = False
+        self._queued_input = None
 
     def _cwd_text(self):
         root = str(self.workspace_root)
@@ -350,11 +352,25 @@ class ChaosApp(App):
             if future is not None and not future.done():
                 future.set_result(text)
             return
+        self._submit(text)
+
+    def _submit(self, text):
+        if self._busy:
+            self._queued_input = text
+            self._log("info", "still thinking — your message is queued")
+            return
+        self._busy = True
         self.messages.append({"role": "user", "content": text})
         self._log("user", text)
         self._set_spinner(True)
         process = self._log("process", [])
         self._ask(process)
+
+    def _finish_turn(self):
+        self._busy = False
+        queued, self._queued_input = self._queued_input, None
+        if queued is not None:
+            self._submit(queued)
 
     def _dispatch_command(self, name, arg):
         if name in ("/exit", "/quit"):
@@ -481,10 +497,11 @@ class ChaosApp(App):
     def _show_reply(self, reply):
         self._set_spinner(False)
         self._log("reply", reply.text)
+        self._finish_turn()
 
     def _fail(self, exc):
         self._set_spinner(False)
         self._release_pending_ask(exc)
-        if self.messages and self.messages[-1]["role"] == "user":
-            self.messages.pop()
+        rollback_turn(self.messages)
         self._log("error", exc)
+        self._finish_turn()
