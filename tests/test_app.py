@@ -10,7 +10,7 @@ from rich.console import Console
 from textual.containers import VerticalScroll
 from textual.widgets import Input, Static
 
-from chaos import ui
+from chaos import commands, ui
 from chaos.app import ChaosApp, ThoughtProcess
 from chaos.llm import Reply
 
@@ -649,6 +649,108 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
                 self.assertIn("deadline cleared", log_text(app))
             saved = json.loads(path.read_text(encoding="utf-8"))
             self.assertNotIn("deadline", saved)
+
+    async def test_typing_slash_lists_matching_commands_above_the_input(self):
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test(size=(80, 24)) as pilot:
+            app.query_one("#input", Input).focus()
+            app.query_one("#input", Input).value = "/"
+            await pilot.pause()
+            widget = app.query_one("#suggestions", Static)
+            self.assertTrue(widget.display)
+            self.assertLess(widget.region.y, app.query_one("#input", Input).region.y)
+            text = _renderable_text(widget.content)
+            for command in commands.COMMANDS:
+                self.assertIn(command, text)
+            self.assertIn("pick a color theme", text)
+            app.query_one("#input", Input).value = "/t"
+            await pilot.pause()
+            text = _renderable_text(widget.content)
+            self.assertIn("/theme", text)
+            self.assertNotIn("/deadline", text)
+            app.query_one("#input", Input).value = "hello"
+            await pilot.pause()
+            self.assertFalse(widget.display)
+
+    async def test_arrow_keys_move_the_highlight_and_tab_accepts_into_the_input(self):
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            app.query_one("#input", Input).focus()
+            app.query_one("#input", Input).value = "/"
+            await pilot.pause()
+            self.assertEqual(app._suggestion_index, 0)
+            await pilot.press("down")
+            await pilot.pause()
+            self.assertEqual(app._suggestion_index, 1)
+            await pilot.press("up", "up")
+            await pilot.pause()
+            self.assertEqual(app._suggestion_index, len(commands.COMMANDS) - 1)
+            await pilot.press("down")
+            await pilot.pause()
+            await pilot.press("tab")
+            await pilot.pause()
+            self.assertEqual(app.query_one("#input", Input).value, "/exit")
+
+    async def test_enter_accepts_a_partial_command_and_a_second_enter_submits_it(self):
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            with patch("chaos.agent.chat_stream") as stream_mock:
+                app.query_one("#input", Input).focus()
+                app.query_one("#input", Input).value = "/he"
+                await pilot.press("enter")
+                await pilot.pause()
+                self.assertEqual(app.query_one("#input", Input).value, "/help")
+                stream_mock.assert_not_called()
+                self.assertEqual(app.messages, [])
+                await pilot.press("enter")
+                await pilot.pause()
+            text = log_text(app)
+            for cmd in ("/help", "/model", "/theme", "/deadline", "/clear", "/exit"):
+                self.assertIn(cmd, text)
+
+    async def test_accepting_a_command_with_an_arg_completes_the_arg_as_a_second_stage(self):
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            app.query_one("#input", Input).focus()
+            app.query_one("#input", Input).value = "/theme o"
+            await pilot.pause()
+            widget = app.query_one("#suggestions", Static)
+            self.assertTrue(widget.display)
+            self.assertIn("ocean", _renderable_text(widget.content))
+            await pilot.press("tab")
+            await pilot.pause()
+            self.assertEqual(app.query_one("#input", Input).value, "/theme ocean")
+            await pilot.press("enter")
+            await pilot.pause()
+            self.assertEqual(app.theme_name, "ocean")
+
+    async def test_arg_stage_completes_model_ids(self):
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            app.query_one("#input", Input).focus()
+            app.query_one("#input", Input).value = "/model p/"
+            await pilot.pause()
+            text = _renderable_text(app.query_one("#suggestions", Static).content)
+            self.assertIn("p/m2", text)
+            await pilot.press("tab")
+            await pilot.pause()
+            self.assertEqual(app.query_one("#input", Input).value, "/model p/m")
+
+    async def test_escape_dismisses_the_list_until_the_input_changes_again(self):
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            app.query_one("#input", Input).focus()
+            app.query_one("#input", Input).value = "/"
+            await pilot.pause()
+            self.assertTrue(app.query_one("#suggestions", Static).display)
+            await pilot.press("escape")
+            await pilot.pause()
+            self.assertFalse(app.query_one("#suggestions", Static).display)
+            app.query_one("#input", Input).value = "/d"
+            await pilot.pause()
+            widget = app.query_one("#suggestions", Static)
+            self.assertTrue(widget.display)
+            self.assertIn("/deadline", _renderable_text(widget.content))
 
     async def test_deadline_invalid_input_keeps_existing_deadline(self):
         from datetime import datetime, timedelta

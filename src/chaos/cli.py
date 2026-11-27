@@ -66,6 +66,12 @@ def repl(console, theme, cfg, ref, config_path=None):
         if not command:
             continue
         name, arg = commands.split(command)
+        if name is not None and name not in commands.COMMANDS and " " not in command:
+            _, matches = commands.suggestions(command, cfg)
+            for value, desc in matches:
+                ui.print_info(console, theme, f"{value} — {desc}" if desc else value)
+            if matches:
+                continue
         if name in commands.COMMANDS:
             if name in ("/exit", "/quit"):
                 return

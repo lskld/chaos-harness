@@ -51,6 +51,11 @@ Inside the CLI, slash commands:
 | `/clear` | clear the chat |
 | `/exit` | quit |
 
+While typing in the input, `/` shows the matching commands with their descriptions
+above the input line (↑/↓ to move, Tab/Enter to accept, Esc to dismiss); `/model`,
+`/theme` and `/deadline` also complete their argument values as you type. When the
+CLI runs piped, a `/`-prefixed line echoes the matching commands instead.
+
 ## Config (`~/.chaos/config.json`)
 
 The file is provider-agnostic: any API with an OpenAI-compatible
