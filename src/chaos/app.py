@@ -214,7 +214,9 @@ class ChaosApp(App):
     #bottom { dock: bottom; height: auto; }
     #suggestions { display: none; height: auto; max-height: 8; padding: 0 2; margin: 0 2; }
     #input { margin: 0 2; }
-    #cwd { height: 1; padding: 0 2; }
+    #statusline { height: 1; }
+    #cwd { height: 1; width: 1fr; padding: 0 2; }
+    #usage { height: 1; width: auto; text-align: right; padding: 0 2; }
     """
 
     BINDINGS = [("ctrl+q", "exit_app", "Quit")]
@@ -240,6 +242,8 @@ class ChaosApp(App):
         self._suggestion_stage = None
         self._suggestion_items = []
         self._suggestion_index = 0
+        self._turn_usage = {}
+        self._session_tokens = 0
 
     def _cwd_text(self):
         root = str(self.workspace_root)
@@ -265,7 +269,9 @@ class ChaosApp(App):
         with Vertical(id="bottom"):
             yield Static("", id="suggestions")
             yield CommandInput(placeholder="ask chaos…", id="input")
-            yield Static(Text(self._cwd_text()), id="cwd")
+            with Horizontal(id="statusline"):
+                yield Static(Text(self._cwd_text()), id="cwd")
+                yield Static("", id="usage")
 
     def on_mount(self):
         self._apply_theme()
@@ -287,7 +293,7 @@ class ChaosApp(App):
         for widget in self.query("#topbar, #topbar *, #log, #log *, #bottom, #bottom *"):
             widget.styles.background = bg
         self.query_one("#name").styles.color = _hex_color(theme["banner"], "#ffaf00")
-        for widget in self.query("#model, #tagline, #helpline, #status, #deadline, #cwd"):
+        for widget in self.query("#model, #usage, #tagline, #helpline, #status, #deadline, #cwd"):
             widget.styles.color = info
         self.query_one("#input").styles.border = ("solid", _hex_color(theme["prompt"], "#00d7ff"))
         self.query_one("#mascot", Static).update(ui.mascot_text(theme=theme))
@@ -345,6 +351,11 @@ class ChaosApp(App):
     def _update_deadline(self):
         if self._deadline_widget is not None and self._deadline_widget.is_mounted:
             self._deadline_widget.update(config_mod.deadline_text(self.cfg))
+
+    def _update_usage(self):
+        widget = self.query_one("#usage", Static)
+        if widget.is_mounted:
+            widget.update(ui.usage_text(self._turn_usage, self._session_tokens))
 
     def _tick(self):
         self._update_deadline()
@@ -590,6 +601,12 @@ class ChaosApp(App):
 
     def _show_reply(self, reply):
         self._set_spinner(False)
+        usage = getattr(reply, "usage", None) or {}
+        self._turn_usage = usage
+        total = usage.get("total_tokens")
+        if isinstance(total, (int, float)) and not isinstance(total, bool):
+            self._session_tokens += int(total)
+        self._update_usage()
         self._log("reply", reply.text)
         self._finish_turn()
 

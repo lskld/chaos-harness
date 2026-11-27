@@ -112,5 +112,26 @@ class RenderTest(unittest.TestCase):
         self.assertIn("checking files", only_content.renderables[0].plain)
 
 
+class UsageTextTest(unittest.TestCase):
+    def test_format_tokens_compacts_thousands_and_millions(self):
+        self.assertEqual(ui.format_tokens(0), "0")
+        self.assertEqual(ui.format_tokens(890), "890")
+        self.assertEqual(ui.format_tokens(1000), "1k")
+        self.assertEqual(ui.format_tokens(1200), "1.2k")
+        self.assertEqual(ui.format_tokens(8900), "8.9k")
+        self.assertEqual(ui.format_tokens(2500000), "2.5M")
+
+    def test_usage_text_shows_this_turn_and_session_totals(self):
+        text = ui.usage_text(
+            {"prompt_tokens": 1200, "completion_tokens": 2200, "total_tokens": 3400}, 8900
+        )
+        self.assertEqual(text, "1.2k/3.4k tok this turn · 8.9k session")
+
+    def test_usage_text_is_empty_when_nothing_was_used(self):
+        self.assertEqual(ui.usage_text({}, 0), "")
+        self.assertEqual(ui.usage_text(None, 0), "")
+        self.assertEqual(ui.usage_text({"prompt_tokens": 0, "total_tokens": 0}, 0), "")
+
+
 if __name__ == "__main__":
     unittest.main()

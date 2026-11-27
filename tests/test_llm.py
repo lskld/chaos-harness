@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 
 import requests
 
-from chaos.llm import LLMError, chat, chat_stream
+from chaos.llm import LLMError, add_usage, chat, chat_stream
 
 
 def fake_response(status=200, payload=None, text=""):
@@ -14,13 +14,16 @@ def fake_response(status=200, payload=None, text=""):
     return response
 
 
-def payload(content=None, reasoning=None, extra_message=None):
+def payload(content=None, reasoning=None, extra_message=None, usage=None):
     message = {"content": content}
     if reasoning is not None:
         message["reasoning"] = reasoning
     if extra_message:
         message.update(extra_message)
-    return {"choices": [{"message": message}]}
+    body = {"choices": [{"message": message}]}
+    if usage is not None:
+        body["usage"] = usage
+    return body
 
 
 class ChatTest(unittest.TestCase):
@@ -180,6 +183,15 @@ class ChatTest(unittest.TestCase):
             reply = chat(base_url="https://api.example.com/v1", api_key="k", model="m", messages=[])
         self.assertEqual(reply.tool_calls, ())
         self.assertEqual(reply.events, ())
+        self.assertEqual(reply.usage, {})
+
+    def test_usage_block_lands_on_reply(self):
+        usage = {"prompt_tokens": 12, "completion_tokens": 8, "total_tokens": 20}
+        with patch("chaos.llm.requests.post") as post:
+            post.return_value = fake_response(payload=payload(content="hi", usage=usage))
+            reply = chat(base_url="https://api.example.com/v1", api_key="k", model="m", messages=[])
+        self.assertEqual(reply.text, "hi")
+        self.assertEqual(reply.usage, usage)
 
 
 def sse_response(lines, status=200, text=""):
@@ -361,6 +373,54 @@ class ChatStreamTest(unittest.TestCase):
             post.return_value = sse_response(lines)
             reply = chat_stream(base_url="https://x/v1", api_key="k", model="m", messages=[])
         self.assertEqual(reply.text, "ok")
+        self.assertEqual(reply.usage, {})
+
+    def test_stream_requests_usage_via_stream_options(self):
+        with patch("chaos.llm.requests.post") as post:
+            post.return_value = sse_response(["data: [DONE]"])
+            chat_stream(base_url="https://x/v1", api_key="k", model="m", messages=[])
+        self.assertEqual(post.call_args.kwargs["json"]["stream_options"], {"include_usage": True})
+
+    def test_stream_usage_chunk_lands_on_reply(self):
+        lines = [
+            'data: {"choices": [{"delta": {"content": "hi"}}]}',
+            'data: {"choices": [], "usage": {"prompt_tokens": 12, "completion_tokens": 8, "total_tokens": 20}}',
+            "data: [DONE]",
+        ]
+        with patch("chaos.llm.requests.post") as post:
+            post.return_value = sse_response(lines)
+            reply = chat_stream(base_url="https://x/v1", api_key="k", model="m", messages=[])
+        self.assertEqual(reply.text, "hi")
+        self.assertEqual(
+            reply.usage, {"prompt_tokens": 12, "completion_tokens": 8, "total_tokens": 20}
+        )
+
+    def test_non_sse_fallback_parses_usage(self):
+        usage = {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5}
+        with patch("chaos.llm.requests.post") as post:
+            response = fake_response(payload=payload(content="hi", usage=usage))
+            response.headers = {"Content-Type": "application/json"}
+            post.return_value = response
+            reply = chat_stream(base_url="https://x/v1", api_key="k", model="m", messages=[])
+        self.assertEqual(reply.text, "hi")
+        self.assertEqual(reply.usage, usage)
+
+
+class AddUsageTest(unittest.TestCase):
+    def test_sums_numeric_fields(self):
+        merged = add_usage(
+            {"prompt_tokens": 1, "total_tokens": 3},
+            {"prompt_tokens": 2, "completion_tokens": 5, "total_tokens": 7},
+        )
+        self.assertEqual(merged, {"prompt_tokens": 3, "completion_tokens": 5, "total_tokens": 10})
+
+    def test_ignores_non_numeric_fields_and_none(self):
+        self.assertEqual(add_usage({}, None), {})
+        merged = add_usage(
+            {"total_tokens": 1},
+            {"total_tokens": 2, "prompt_tokens_details": {"cached_tokens": 4}, "cached": True},
+        )
+        self.assertEqual(merged, {"total_tokens": 3})
 
 
 if __name__ == "__main__":

@@ -232,6 +232,44 @@ class ToolLoopTest(unittest.TestCase):
             self.assertEqual([e["type"] for e in seen], ["round", "tool_call", "tool_result", "reply"])
             self.assertEqual(reply.text, "done")
 
+    def test_reply_event_and_reply_carry_accumulated_turn_usage(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg = {**CFG, "workspace_root": d}
+            messages = [{"role": "user", "content": "go"}]
+            call = {
+                "id": "1",
+                "type": "function",
+                "function": {"name": "list_files", "arguments": "{}"},
+            }
+            calls = [
+                Reply(
+                    text="",
+                    tool_calls=(call,),
+                    usage={"prompt_tokens": 100, "completion_tokens": 10, "total_tokens": 110},
+                ),
+                Reply(
+                    text="done",
+                    usage={"prompt_tokens": 200, "completion_tokens": 20, "total_tokens": 220},
+                ),
+            ]
+            seen = []
+            with patch("chaos.agent.chat", side_effect=calls):
+                reply = respond(cfg, "p/m", messages, on_event=seen.append)
+            expected = {"prompt_tokens": 300, "completion_tokens": 30, "total_tokens": 330}
+            reply_events = [e for e in seen if e["type"] == "reply"]
+            self.assertEqual(len(reply_events), 1)
+            self.assertEqual(reply_events[0]["usage"], expected)
+            self.assertEqual(reply.usage, expected)
+
+    def test_reply_usage_is_empty_when_the_api_reports_none(self):
+        messages = [{"role": "user", "content": "hi"}]
+        seen = []
+        with patch("chaos.agent.chat", return_value=Reply(text="yo")):
+            reply = respond(CFG, "p/m", messages, on_event=seen.append)
+        self.assertEqual(reply.usage, {})
+        self.assertEqual(seen[-1]["type"], "reply")
+        self.assertEqual(seen[-1]["usage"], {})
+
     def test_stream_emits_reasoning_deltas_and_skips_duplicate_round(self):
         messages = [{"role": "user", "content": "hi"}]
         seen = []
