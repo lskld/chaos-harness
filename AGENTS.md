@@ -7,7 +7,7 @@ chaos-harness is a hackathon-specific, bring-your-own-model agent CLI. Python 3.
 - `src/chaos/cli.py` — entry point and composition root: arg parsing, one-shot mode, dispatch to the full-screen app on a TTY vs the piped loop.
 - `src/chaos/app.py` — the full-screen Textual app; the agent call runs in a worker thread.
 - `src/chaos/ui.py`, `src/chaos/commands.py`, `src/chaos/themes.py` — shared renderables, slash commands, color themes.
-- `src/chaos/session.py` — the `Session`: conversation history plus the mutable settings (model, theme, deadline) and slash-command semantics shared by both frontends; `cli.py` and `app.py` are thin I/O shells over it.
+- `src/chaos/session.py` — the `Session`: conversation history (including rollback of aborted turns), the mutable settings (model, theme, deadline) and slash-command semantics shared by both frontends; `cli.py` and `app.py` are thin I/O shells over it. `agent.respond()` takes the Session and guarantees its messages are back to the pre-turn state when it raises.
 - `src/chaos/agent.py` — the agent tool loop (`respond()`); `src/chaos/llm.py` — all HTTP (OpenAI-compatible chat completions, plain + SSE streaming).
 - `src/chaos/config.py` — `~/.chaos/config.json` loading and provider/model resolution.
 - `src/chaos/tools/` — the agent's tools: registry in `__init__.py` (`Tool`, `schemas()`, `execute()`, path confinement) plus one module per tool; a new tool adds one module here plus one import in `__init__.py`.

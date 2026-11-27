@@ -132,5 +132,35 @@ class SessionPersistTest(unittest.TestCase):
             self.assertIn("could not save model to config", out[-1][1])
 
 
+class RollbackToLastUserTest(unittest.TestCase):
+    def test_truncates_everything_since_the_last_user_message(self):
+        session = Session(CFG, "p/m")
+        session.messages.extend(
+            [
+                {"role": "system", "content": "s"},
+                {"role": "user", "content": "one"},
+                {"role": "assistant", "content": "r1"},
+                {"role": "user", "content": "two"},
+                {"role": "assistant", "content": "", "tool_calls": [{"id": "1"}]},
+                {"role": "tool", "tool_call_id": "1", "name": "list_files", "content": "..."},
+            ]
+        )
+        session.rollback_to_last_user()
+        self.assertEqual(
+            session.messages,
+            [
+                {"role": "system", "content": "s"},
+                {"role": "user", "content": "one"},
+                {"role": "assistant", "content": "r1"},
+            ],
+        )
+
+    def test_history_without_a_user_message_is_left_untouched(self):
+        session = Session(CFG, "p/m")
+        session.messages.append({"role": "system", "content": "s"})
+        session.rollback_to_last_user()
+        self.assertEqual(session.messages, [{"role": "system", "content": "s"}])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -36,6 +36,14 @@ class Session:
         self.messages.clear()
         return [("info", "history cleared")]
 
+    def rollback_to_last_user(self):
+        """Drop everything appended since the current turn's user message (inclusive), so an
+        aborted or failed tool loop leaves no dangling assistant tool_calls in the history."""
+        for index in range(len(self.messages) - 1, -1, -1):
+            if self.messages[index].get("role") == "user":
+                del self.messages[index:]
+                return
+
     def model_options(self):
         return config_mod.list_models(self.cfg)
 

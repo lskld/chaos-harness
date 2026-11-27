@@ -8,7 +8,7 @@ from . import commands
 from . import config as config_mod
 from . import tools as tools_mod
 from . import ui
-from .agent import respond, rollback_turn
+from .agent import respond
 from .session import Session
 
 
@@ -87,16 +87,11 @@ def repl(console, theme, cfg, ref, config_path=None):
         session.messages.append({"role": "user", "content": command})
         try:
             with console.status(f"[{theme['info']}]thinking…[/]", spinner="dots"):
-                reply = respond(
-                    session.cfg, session.ref, session.messages,
-                    on_event=_ask_event_handler(console, theme),
-                )
+                reply = respond(session, on_event=_ask_event_handler(console, theme))
         except KeyboardInterrupt:
-            rollback_turn(session.messages)
             console.print()
             continue
         except Exception as exc:
-            rollback_turn(session.messages)
             ui.print_error(console, theme, exc)
             continue
         for event in reply.events:
@@ -124,9 +119,10 @@ def main(argv=None):
         ui.print_error(console, theme, exc)
         return 2
     if args.prompt:
-        messages = [{"role": "user", "content": args.prompt}]
+        session = Session(cfg, ref)
+        session.messages.append({"role": "user", "content": args.prompt})
         try:
-            reply = respond(cfg, ref, messages, on_event=_ask_event_handler(console, theme))
+            reply = respond(session, on_event=_ask_event_handler(console, theme))
         except KeyboardInterrupt:
             console.print()
             return 130

@@ -15,7 +15,7 @@ from . import commands
 from . import config as config_mod
 from . import tools as tools_mod
 from . import ui
-from .agent import respond, rollback_turn
+from .agent import respond
 from .session import Session
 
 
@@ -560,7 +560,7 @@ class ChaosApp(App):
             self.call_from_thread(self._add_process_event, process, event)
 
         try:
-            reply = respond(self.cfg, self.ref, self.messages, on_event=on_event, stream=True)
+            reply = respond(self.session, on_event=on_event, stream=True)
         except Exception as exc:
             self.call_from_thread(self._fail, exc)
             return
@@ -588,6 +588,5 @@ class ChaosApp(App):
     def _fail(self, exc):
         self._set_spinner(False)
         self._release_pending_ask(exc)
-        rollback_turn(self.messages)
         self._log("error", exc)
         self._finish_turn()
