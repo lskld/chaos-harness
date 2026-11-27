@@ -736,6 +736,19 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertEqual(app.query_one("#input", Input).value, "/model p/m")
 
+    async def test_input_changed_from_another_widget_does_not_drive_suggestions(self):
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            other = Input(id="other")
+            await app.mount(other)
+            app.query_one("#input", Input).value = "/t"
+            await pilot.pause()
+            self.assertEqual(app._suggestion_items, [("/theme", "pick a color theme")])
+            app.on_input_changed(Input.Changed(other, "/d"))
+            self.assertEqual(app._suggestion_items, [("/theme", "pick a color theme")])
+            self.assertTrue(app.query_one("#suggestions", Static).display)
+            await other.remove()
+
     async def test_escape_dismisses_the_list_until_the_input_changes_again(self):
         app = ChaosApp(CFG, "p/m")
         async with app.run_test() as pilot:

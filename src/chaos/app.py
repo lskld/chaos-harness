@@ -368,6 +368,8 @@ class ChaosApp(App):
             self.query_one("#mascot", Static).update(ui.mascot_text(theme=self.ui_theme))
 
     def on_input_changed(self, event: Input.Changed):
+        if event.input.id != "input":
+            return
         self._update_suggestions()
 
     def _update_suggestions(self):
