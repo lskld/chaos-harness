@@ -172,6 +172,31 @@ class ThoughtProcess(Collapsible):
             self._pending.append(block)
 
 
+class CommandInput(Input):
+    """The chat input; while slash-command suggestions are visible, arrows move the
+    highlight, tab accepts it and escape dismisses the list."""
+
+    BINDINGS = [
+        Binding("up", "suggestion_up", show=False, priority=True),
+        Binding("down", "suggestion_down", show=False, priority=True),
+        Binding("tab", "suggestion_accept", show=False, priority=True),
+        Binding("escape", "suggestion_dismiss", show=False, priority=True),
+    ]
+
+    def action_suggestion_up(self) -> None:
+        self.app._move_suggestion(-1)
+
+    def action_suggestion_down(self) -> None:
+        self.app._move_suggestion(1)
+
+    def action_suggestion_accept(self) -> None:
+        if not self.app._accept_suggestion():
+            self.screen.focus_next()
+
+    def action_suggestion_dismiss(self) -> None:
+        self.app._dismiss_suggestions()
+
+
 class ChaosApp(App):
     CSS = """
     #topbar { dock: top; height: auto; padding: 1 2 0 2; }
@@ -187,6 +212,7 @@ class ChaosApp(App):
     }
     .process-log { height: auto; max-height: 20; padding: 0 0 0 2; }
     #bottom { dock: bottom; height: auto; }
+    #suggestions { display: none; height: auto; max-height: 8; padding: 0 2; margin: 0 2; }
     #input { margin: 0 2; }
     #cwd { height: 1; padding: 0 2; }
     """
@@ -211,6 +237,9 @@ class ChaosApp(App):
         self._pending_ask = None
         self._busy = False
         self._queued_inputs = []
+        self._suggestion_stage = None
+        self._suggestion_items = []
+        self._suggestion_index = 0
 
     def _cwd_text(self):
         root = str(self.workspace_root)
@@ -234,7 +263,8 @@ class ChaosApp(App):
                 yield Static("", id="deadline")
         yield VerticalScroll(id="log")
         with Vertical(id="bottom"):
-            yield Input(placeholder="ask chaos…", id="input")
+            yield Static("", id="suggestions")
+            yield CommandInput(placeholder="ask chaos…", id="input")
             yield Static(Text(self._cwd_text()), id="cwd")
 
     def on_mount(self):
@@ -261,6 +291,7 @@ class ChaosApp(App):
             widget.styles.color = info
         self.query_one("#input").styles.border = ("solid", _hex_color(theme["prompt"], "#00d7ff"))
         self.query_one("#mascot", Static).update(ui.mascot_text(theme=theme))
+        self._update_suggestions()
 
     def _log(self, kind, payload):
         self._log_items.append((kind, payload))
@@ -336,8 +367,72 @@ class ChaosApp(App):
             self.query_one("#status", Static).update("")
             self.query_one("#mascot", Static).update(ui.mascot_text(theme=self.ui_theme))
 
+    def on_input_changed(self, event: Input.Changed):
+        if event.input.id != "input":
+            return
+        self._update_suggestions()
+
+    def _update_suggestions(self):
+        value = self.query_one("#input", Input).value
+        stage, items = commands.suggestions(value, self.cfg)
+        self._suggestion_stage = stage
+        self._suggestion_items = items
+        self._suggestion_index = 0
+        widget = self.query_one("#suggestions", Static)
+        widget.display = bool(items)
+        if items:
+            widget.update(self._render_suggestions())
+
+    def _render_suggestions(self):
+        theme = self.ui_theme
+        text = Text()
+        for index, (value, desc) in enumerate(self._suggestion_items):
+            if index:
+                text.append("\n")
+            highlighted = index == self._suggestion_index
+            style = theme["prompt"] if highlighted else theme["info"]
+            text.append("❯ " if highlighted else "  ", style=style)
+            text.append(value, style=style if highlighted else "")
+            if desc:
+                text.append(f"  {desc}", style=theme["info"])
+        return text
+
+    def _move_suggestion(self, delta):
+        if not self._suggestion_items:
+            return False
+        self._suggestion_index = (self._suggestion_index + delta) % len(self._suggestion_items)
+        self.query_one("#suggestions", Static).update(self._render_suggestions())
+        return True
+
+    def _accept_suggestion(self):
+        if not self._suggestion_items:
+            return False
+        value, _ = self._suggestion_items[self._suggestion_index % len(self._suggestion_items)]
+        input_widget = self.query_one("#input", Input)
+        if self._suggestion_stage == "command":
+            new_value = value + (" " if commands.arg_hint(value) else "")
+        else:
+            name, _ = commands.split(input_widget.value)
+            new_value = f"{name} {value}"
+        input_widget.value = new_value
+        input_widget.cursor_position = len(new_value)
+        return True
+
+    def _dismiss_suggestions(self):
+        self._suggestion_stage = None
+        self._suggestion_items = []
+        self._suggestion_index = 0
+        self.query_one("#suggestions", Static).display = False
+
     def on_input_submitted(self, event: Input.Submitted):
         text = event.value.strip()
+        if (
+            self._suggestion_stage == "command"
+            and self._suggestion_items
+            and text not in commands.COMMANDS
+        ):
+            self._accept_suggestion()
+            return
         event.input.clear()
         if not text:
             return

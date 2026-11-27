@@ -13,6 +13,66 @@ HELP_LINES = (
 
 UNCHANGED = object()
 
+COMMAND_ALIASES = {"/quit": "/exit"}
+
+
+def _parse_help_lines():
+    """name -> (arg_hint, description), parsed from HELP_LINES so the two never drift."""
+    entries = {}
+    for line in HELP_LINES:
+        name, _, rest = line.partition(" ")
+        hint = ""
+        if rest.startswith("["):
+            end = rest.find("]")
+            hint = rest[: end + 1]
+            rest = rest[end + 1 :].strip()
+        description = rest.split("—", 1)[1].strip() if "—" in rest else rest.strip()
+        entries[name] = (hint, description)
+    for alias, target in COMMAND_ALIASES.items():
+        if target in entries:
+            entries.setdefault(alias, entries[target])
+    return entries
+
+
+HELP_ENTRIES = _parse_help_lines()
+
+
+def arg_hint(name):
+    """The bracketed argument hint of a command from its help line ('' when it takes none)."""
+    return HELP_ENTRIES.get(name, ("", ""))[0]
+
+
+def description(name):
+    """The short description of a command from its help line."""
+    return HELP_ENTRIES.get(name, ("", ""))[1]
+
+
+def _arg_options(name, cfg):
+    if name == "/theme":
+        return config_mod.theme_names()
+    if name == "/model":
+        return config_mod.list_models(cfg) if cfg is not None else []
+    if name == "/deadline":
+        return ["off"]
+    return []
+
+
+def suggestions(line, cfg=None):
+    """Completion candidates for an input line: (stage, [(value, description), ...]).
+
+    stage is "command" while the line is a bare slash prefix (no space yet),
+    "arg" while completing the argument of a command that takes one, and None
+    when there is nothing to complete.
+    """
+    if not line.startswith("/"):
+        return None, []
+    if " " not in line:
+        return "command", [(name, description(name)) for name in COMMANDS if name.startswith(line)]
+    name, arg = split(line)
+    if name not in COMMANDS or not arg_hint(name):
+        return None, []
+    return "arg", [(option, "") for option in _arg_options(name, cfg) if option.startswith(arg)]
+
 
 def split(line):
     """Split an input line into (command, arg); (None, '') when it is plain text."""

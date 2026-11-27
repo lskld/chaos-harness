@@ -104,6 +104,18 @@ class ReplCommandTest(unittest.TestCase):
             self.assertIn("yo", out)
 
 
+    def test_unknown_slash_prefix_echoes_matching_commands_instead_of_calling_the_model(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            path.write_text(json.dumps(CFG), encoding="utf-8")
+            cfg = config_mod.load(path)
+            with patch("chaos.cli.respond") as respond_mock:
+                out = run_repl(["/t", "/exit"], cfg, path)
+            self.assertIn("/theme", out)
+            self.assertIn("pick a color theme", out)
+            self.assertNotIn("/deadline", out)
+            respond_mock.assert_not_called()
+
     def test_help_lists_commands_and_blank_lines_are_ignored(self):
         with tempfile.TemporaryDirectory() as d:
             path = Path(d) / "config.json"

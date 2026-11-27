@@ -25,6 +25,51 @@ class SplitTest(unittest.TestCase):
         self.assertNotIn(name, commands.COMMANDS)
 
 
+class SuggestionsTest(unittest.TestCase):
+    def test_bare_slash_lists_all_commands_with_descriptions(self):
+        stage, items = commands.suggestions("/")
+        self.assertEqual(stage, "command")
+        self.assertEqual([value for value, _ in items], list(commands.COMMANDS))
+        by_name = dict(items)
+        self.assertEqual(by_name["/theme"], "pick a color theme")
+        self.assertEqual(by_name["/quit"], "quit")
+
+    def test_prefix_filters_command_names(self):
+        stage, items = commands.suggestions("/t")
+        self.assertEqual(stage, "command")
+        self.assertEqual([value for value, _ in items], ["/theme"])
+        stage, items = commands.suggestions("/d")
+        self.assertEqual([value for value, _ in items], ["/deadline"])
+
+    def test_plain_text_and_non_prefix_lines_have_nothing_to_complete(self):
+        self.assertEqual(commands.suggestions("hello"), (None, []))
+        self.assertEqual(commands.suggestions("/help now"), (None, []))
+        self.assertEqual(commands.suggestions("/zzz"), ("command", []))
+
+    def test_arg_stage_completes_theme_names(self):
+        stage, items = commands.suggestions("/theme o")
+        self.assertEqual(stage, "arg")
+        self.assertEqual([value for value, _ in items], ["ocean"])
+
+    def test_arg_stage_completes_model_ids(self):
+        stage, items = commands.suggestions("/model p/", CFG)
+        self.assertEqual(stage, "arg")
+        self.assertEqual([value for value, _ in items], ["p/m", "p/m2"])
+
+    def test_arg_stage_completes_deadline_off(self):
+        stage, items = commands.suggestions("/deadline o")
+        self.assertEqual((stage, [value for value, _ in items]), ("arg", ["off"]))
+
+    def test_command_without_arg_has_no_arg_stage(self):
+        self.assertEqual(commands.suggestions("/help x"), (None, []))
+
+    def test_arg_hints_and_descriptions_come_from_the_help_lines(self):
+        self.assertEqual(commands.arg_hint("/theme"), "[name]")
+        self.assertEqual(commands.arg_hint("/deadline"), "[HH:MM|off]")
+        self.assertEqual(commands.arg_hint("/exit"), "")
+        self.assertEqual(commands.description("/model"), "pick or switch model")
+
+
 class ModelCommandTest(unittest.TestCase):
     def test_lists_models_with_marker(self):
         ref, out = commands.model_command(CFG, "", "p/m")
