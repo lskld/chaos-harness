@@ -15,7 +15,8 @@ from . import commands
 from . import config as config_mod
 from . import tools as tools_mod
 from . import ui
-from .agent import respond, rollback_turn
+from .agent import respond
+from .session import Session
 
 
 def _hex_color(style_str, default):
@@ -223,12 +224,8 @@ class ChaosApp(App):
 
     def __init__(self, cfg, ref, config_path=None):
         super().__init__()
-        self.cfg = dict(cfg)
-        self.ref = ref
-        self.config_path = config_path
-        self.theme_name = cfg.get("theme_name") or config_mod.DEFAULT_THEME_NAME
-        self.ui_theme = config_mod.theme(cfg, self.theme_name)
-        self.messages = []
+        self.session = Session(cfg, ref, config_path)
+        self.ui_theme = self.session.theme
         self.workspace_root = tools_mod.workspace_root(cfg)
         self._log_items = []
         self._spinner_on = False
@@ -244,6 +241,26 @@ class ChaosApp(App):
         self._suggestion_index = 0
         self._turn_usage = {}
         self._session_tokens = 0
+
+    @property
+    def cfg(self):
+        return self.session.cfg
+
+    @property
+    def ref(self):
+        return self.session.ref
+
+    @property
+    def config_path(self):
+        return self.session.config_path
+
+    @property
+    def theme_name(self):
+        return self.session.theme_name
+
+    @property
+    def messages(self):
+        return self.session.messages
 
     def _cwd_text(self):
         root = str(self.workspace_root)
@@ -478,34 +495,38 @@ class ChaosApp(App):
             self._submit(self._queued_inputs.pop(0))
 
     def _dispatch_command(self, name, arg):
-        if name in ("/exit", "/quit"):
+        if name == "/model" and not arg:
+            self._open_model_picker()
+            return
+        if name == "/theme" and not arg:
+            self._open_theme_picker()
+            return
+        ref_before, theme_before = self.session.ref, self.session.theme_name
+        action, out = self.session.handle_command(name, arg)
+        for kind, payload in out:
+            self._log(kind, payload)
+        if action == "exit":
             self._quit()
-        elif name == "/help":
-            for line in commands.HELP_LINES:
-                self._log("info", line)
-        elif name == "/clear":
-            self.messages.clear()
+        elif action == "clear":
             self._log_items.clear()
             self.log_widget.remove_children()
-        elif name == "/model":
-            self._model_command(arg)
-        elif name == "/theme":
-            self._theme_command(arg)
-        elif name == "/deadline":
-            self._deadline_command(arg)
+        if self.session.ref != ref_before:
+            self.query_one("#model", Static).update(f"model: {self.session.ref}")
+        if self.session.theme_name != theme_before:
+            self.ui_theme = self.session.theme
+            self._apply_theme()
+            self._rebuild_log()
+        self._update_deadline()
 
-    def _model_command(self, arg):
-        if arg:
-            self._switch_model(arg)
-            return
-        models = config_mod.list_models(self.cfg)
+    def _open_model_picker(self):
+        models = self.session.model_options()
         if not models:
             self._log("error", "no models configured — add some under providers in config.json")
             return
         theme = self.ui_theme
         self.push_screen(
             ModelPicker(
-                self.ref,
+                self.session.ref,
                 models,
                 _hex_color(theme["background"], "#1a0d0a"),
                 _hex_color(theme["prompt"], "#ff87a2"),
@@ -514,70 +535,24 @@ class ChaosApp(App):
         )
 
     def _switch_model(self, ref):
-        if not ref:
-            return
-        current = self.ref
-        self.ref, out = commands.model_command(self.cfg, ref, self.ref)
-        for kind, payload in out:
-            self._log(kind, payload)
-        if self.ref != current:
-            self.query_one("#model", Static).update(f"model: {self.ref}")
-            if self.config_path is not None:
-                self.cfg["default_model"] = self.ref
-                try:
-                    config_mod.save(self.config_path, self.cfg)
-                except OSError as exc:
-                    self._log("error", f"could not save model to config: {exc}")
+        if ref:
+            self._dispatch_command("/model", ref)
 
-    def _deadline_command(self, arg):
-        value, out = commands.deadline_command(arg)
-        for kind, payload in out:
-            self._log(kind, payload)
-        if value is commands.UNCHANGED:
-            return
-        if value is None:
-            self.cfg.pop("deadline", None)
-        else:
-            self.cfg["deadline"] = value
-        if self.config_path is not None:
-            try:
-                config_mod.save(self.config_path, self.cfg)
-            except OSError as exc:
-                self._log("error", f"could not save deadline to config: {exc}")
-        self._update_deadline()
-
-    def _theme_command(self, arg):
-        if not arg:
-            theme = self.ui_theme
-            self.push_screen(
-                ThemePicker(
-                    self.theme_name,
-                    config_mod.theme_names(),
-                    _hex_color(theme["background"], "#1a0d0a"),
-                    _hex_color(theme["prompt"], "#ff87a2"),
-                ),
-                callback=self._switch_theme,
-            )
-            return
-        new_name, out = commands.theme_command(arg, self.theme_name)
-        for kind, payload in out:
-            self._log(kind, payload)
-        if new_name:
-            self._switch_theme(new_name)
+    def _open_theme_picker(self):
+        theme = self.ui_theme
+        self.push_screen(
+            ThemePicker(
+                self.session.theme_name,
+                config_mod.theme_names(),
+                _hex_color(theme["background"], "#1a0d0a"),
+                _hex_color(theme["prompt"], "#ff87a2"),
+            ),
+            callback=self._switch_theme,
+        )
 
     def _switch_theme(self, name):
-        if not name:
-            return
-        self.theme_name = name
-        self.ui_theme = config_mod.theme(self.cfg, name)
-        self._apply_theme()
-        self._rebuild_log()
-        if self.config_path is not None:
-            self.cfg["theme_name"] = name
-            try:
-                config_mod.save(self.config_path, self.cfg)
-            except OSError as exc:
-                self._log("error", f"could not save theme to config: {exc}")
+        if name:
+            self._dispatch_command("/theme", name)
 
     @work(thread=True)
     def _ask(self, process):
@@ -585,7 +560,7 @@ class ChaosApp(App):
             self.call_from_thread(self._add_process_event, process, event)
 
         try:
-            reply = respond(self.cfg, self.ref, self.messages, on_event=on_event, stream=True)
+            reply = respond(self.session, on_event=on_event, stream=True)
         except Exception as exc:
             self.call_from_thread(self._fail, exc)
             return
@@ -613,6 +588,5 @@ class ChaosApp(App):
     def _fail(self, exc):
         self._set_spinner(False)
         self._release_pending_ask(exc)
-        rollback_turn(self.messages)
         self._log("error", exc)
         self._finish_turn()

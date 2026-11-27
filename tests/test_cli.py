@@ -137,7 +137,7 @@ class ReplCommandTest(unittest.TestCase):
             self.assertIn("history cleared", out)
             self.assertIn("second", out)
             self.assertEqual(
-                respond_mock.call_args_list[1].args[2], [{"role": "user", "content": "again"}]
+                respond_mock.call_args_list[1].args[0].messages, [{"role": "user", "content": "again"}]
             )
 
     def test_eof_at_prompt_exits_cleanly(self):
@@ -148,20 +148,26 @@ class ReplCommandTest(unittest.TestCase):
             out = run_repl([], cfg, path)
             self.assertIn("p/m", out)
 
-    def test_error_from_model_is_printed_and_message_popped(self):
+    def test_error_from_model_is_printed_and_history_rolled_back(self):
         with tempfile.TemporaryDirectory() as d:
             path = Path(d) / "config.json"
             path.write_text(json.dumps(CFG), encoding="utf-8")
             cfg = config_mod.load(path)
-            with patch(
-                "chaos.cli.respond", side_effect=[Exception("boom"), Reply(text="ok")]
-            ) as respond_mock:
+            seen = []
+            state = {"n": 0}
+
+            def fake_chat(**kwargs):
+                state["n"] += 1
+                seen.append([m["role"] for m in kwargs["messages"]])
+                if state["n"] == 1:
+                    raise RuntimeError("boom")
+                return Reply(text="ok")
+
+            with patch("chaos.agent.chat", side_effect=fake_chat):
                 out = run_repl(["hi", "again", "/exit"], cfg, path)
             self.assertIn("error: boom", out)
             self.assertIn("ok", out)
-            self.assertEqual(
-                respond_mock.call_args_list[1].args[2], [{"role": "user", "content": "again"}]
-            )
+            self.assertEqual(seen[1], ["system", "user"])
 
     def test_abort_mid_tool_loop_rolls_history_back_to_before_the_user_message(self):
         for exc in (RuntimeError("boom"), KeyboardInterrupt()):
@@ -170,50 +176,48 @@ class ReplCommandTest(unittest.TestCase):
                     path = Path(d) / "config.json"
                     path.write_text(json.dumps(CFG), encoding="utf-8")
                     cfg = config_mod.load(path)
-                    calls = {"n": 0}
+                    call = {
+                        "id": "1",
+                        "type": "function",
+                        "function": {"name": "list_files", "arguments": "{}"},
+                    }
+                    seen = []
+                    state = {"n": 0}
 
-                    def flaky(cfg, ref, messages, **kwargs):
-                        calls["n"] += 1
-                        if calls["n"] == 1:
-                            messages.append(
-                                {
-                                    "role": "assistant",
-                                    "content": "",
-                                    "tool_calls": [
-                                        {
-                                            "id": "1",
-                                            "type": "function",
-                                            "function": {"name": "list_files", "arguments": "{}"},
-                                        }
-                                    ],
-                                }
-                            )
-                            messages.append(
-                                {"role": "tool", "tool_call_id": "1", "name": "list_files", "content": "..."}
-                            )
+                    def fake_chat(**kwargs):
+                        state["n"] += 1
+                        seen.append([m["role"] for m in kwargs["messages"]])
+                        if state["n"] == 1:
+                            return Reply(text="", tool_calls=(call,))
+                        if state["n"] == 2:
                             raise exc
                         return Reply(text="ok")
 
-                    with patch("chaos.cli.respond", side_effect=flaky) as respond_mock:
+                    with patch("chaos.agent.chat", side_effect=fake_chat):
                         out = run_repl(["hi", "again", "/exit"], cfg, path)
                     self.assertIn("ok", out)
-                    self.assertEqual(
-                        respond_mock.call_args_list[1].args[2], [{"role": "user", "content": "again"}]
-                    )
+                    self.assertEqual(seen[1], ["system", "user", "assistant", "tool"])
+                    self.assertEqual(seen[2], ["system", "user"])
 
-    def test_keyboard_interrupt_during_model_call_pops_message(self):
+    def test_keyboard_interrupt_during_model_call_rolls_history_back(self):
         with tempfile.TemporaryDirectory() as d:
             path = Path(d) / "config.json"
             path.write_text(json.dumps(CFG), encoding="utf-8")
             cfg = config_mod.load(path)
-            with patch(
-                "chaos.cli.respond", side_effect=[KeyboardInterrupt(), Reply(text="ok")]
-            ) as respond_mock:
+            seen = []
+            state = {"n": 0}
+
+            def fake_chat(**kwargs):
+                state["n"] += 1
+                seen.append([m["role"] for m in kwargs["messages"]])
+                if state["n"] == 1:
+                    raise KeyboardInterrupt
+                return Reply(text="ok")
+
+            with patch("chaos.agent.chat", side_effect=fake_chat):
                 out = run_repl(["hi", "again", "/exit"], cfg, path)
             self.assertIn("ok", out)
-            self.assertEqual(
-                respond_mock.call_args_list[1].args[2], [{"role": "user", "content": "again"}]
-            )
+            self.assertEqual(seen[1], ["system", "user"])
 
 
 class ReplAskUserTest(unittest.TestCase):
@@ -340,7 +344,7 @@ class MainTest(unittest.TestCase):
             ):
                 rc = main(["--config", str(path), "--model", "p/m2", "hi"])
             self.assertEqual(rc, 0)
-            self.assertEqual(respond_mock.call_args.args[1], "p/m2")
+            self.assertEqual(respond_mock.call_args.args[0].ref, "p/m2")
 
     def test_one_shot_invalid_model_returns_2(self):
         with tempfile.TemporaryDirectory() as d:

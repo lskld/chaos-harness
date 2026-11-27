@@ -8,7 +8,8 @@ from . import commands
 from . import config as config_mod
 from . import tools as tools_mod
 from . import ui
-from .agent import respond, rollback_turn
+from .agent import respond
+from .session import Session
 
 
 def parse_args(argv=None):
@@ -55,7 +56,7 @@ def _ask_event_handler(console, theme):
 
 def repl(console, theme, cfg, ref, config_path=None):
     ui.print_banner(console, theme, ref)
-    messages = []
+    session = Session(cfg, ref, config_path)
     while True:
         try:
             line = ui.prompt_input(console, theme)
@@ -67,70 +68,30 @@ def repl(console, theme, cfg, ref, config_path=None):
             continue
         name, arg = commands.split(command)
         if name is not None and name not in commands.COMMANDS and " " not in command:
-            _, matches = commands.suggestions(command, cfg)
+            _, matches = commands.suggestions(command, session.cfg)
             for value, desc in matches:
                 ui.print_info(console, theme, f"{value} — {desc}" if desc else value)
             if matches:
                 continue
         if name in commands.COMMANDS:
-            if name in ("/exit", "/quit"):
+            action, out = session.handle_command(name, arg)
+            if action == "exit":
                 return
-            if name == "/help":
-                for text in commands.HELP_LINES:
-                    ui.print_info(console, theme, text)
-                continue
-            if name == "/clear":
-                messages.clear()
-                ui.print_info(console, theme, "history cleared")
-                continue
-            if name == "/model":
-                new_ref, out = commands.model_command(cfg, arg, ref)
-                _print_out(console, theme, out)
-                if new_ref != ref:
-                    ref = new_ref
-                    if config_path is not None:
-                        cfg["default_model"] = ref
-                        try:
-                            config_mod.save(config_path, cfg)
-                        except OSError as exc:
-                            ui.print_error(console, theme, f"could not save model to config: {exc}")
-                continue
-            if name == "/theme":
-                new_name, out = commands.theme_command(arg, cfg.get("theme_name"))
-                _print_out(console, theme, out)
-                if new_name:
-                    cfg["theme_name"] = new_name
-                    theme = config_mod.theme(cfg, new_name)
-                    if config_path is not None:
-                        try:
-                            config_mod.save(config_path, cfg)
-                        except OSError as exc:
-                            ui.print_error(console, theme, f"could not save theme to config: {exc}")
-                continue
-            if name == "/deadline":
-                value, out = commands.deadline_command(arg)
-                _print_out(console, theme, out)
-                if value is not commands.UNCHANGED:
-                    if value is None:
-                        cfg.pop("deadline", None)
-                    else:
-                        cfg["deadline"] = value
-                    if config_path is not None:
-                        try:
-                            config_mod.save(config_path, cfg)
-                        except OSError as exc:
-                            ui.print_error(console, theme, f"could not save deadline to config: {exc}")
-                continue
-        messages.append({"role": "user", "content": command})
+            if action == "pick_model":
+                out = session.list_models()
+            elif action == "pick_theme":
+                out = session.list_themes()
+            _print_out(console, theme, out)
+            theme = session.theme
+            continue
+        session.messages.append({"role": "user", "content": command})
         try:
             with console.status(f"[{theme['info']}]thinking…[/]", spinner="dots"):
-                reply = respond(cfg, ref, messages, on_event=_ask_event_handler(console, theme))
+                reply = respond(session, on_event=_ask_event_handler(console, theme))
         except KeyboardInterrupt:
-            rollback_turn(messages)
             console.print()
             continue
         except Exception as exc:
-            rollback_turn(messages)
             ui.print_error(console, theme, exc)
             continue
         for event in reply.events:
@@ -158,9 +119,10 @@ def main(argv=None):
         ui.print_error(console, theme, exc)
         return 2
     if args.prompt:
-        messages = [{"role": "user", "content": args.prompt}]
+        session = Session(cfg, ref)
+        session.messages.append({"role": "user", "content": args.prompt})
         try:
-            reply = respond(cfg, ref, messages, on_event=_ask_event_handler(console, theme))
+            reply = respond(session, on_event=_ask_event_handler(console, theme))
         except KeyboardInterrupt:
             console.print()
             return 130
