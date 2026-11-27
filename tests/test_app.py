@@ -765,7 +765,7 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(widget.display)
             self.assertIn("/deadline", _renderable_text(widget.content))
 
-    async def test_top_bar_shows_turn_and_session_token_usage(self):
+    async def test_bottom_right_shows_turn_and_session_token_usage(self):
         app = ChaosApp(CFG, "p/m")
         async with app.run_test() as pilot:
             with patch(
@@ -792,7 +792,7 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
                     "2k/5.5k tok this turn · 8.9k session",
                 )
 
-    async def test_top_bar_usage_stays_empty_when_no_usage_is_reported(self):
+    async def test_bottom_right_usage_stays_empty_when_no_usage_is_reported(self):
         app = ChaosApp(CFG, "p/m")
         async with app.run_test() as pilot:
             await pilot.pause()
@@ -800,6 +800,29 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             with patch("chaos.agent.chat_stream", return_value=Reply(text="hi")):
                 await type_and_submit(app, pilot, "hi")
             self.assertEqual(str(app.query_one("#usage", Static).render()), "")
+
+    async def test_usage_sits_in_the_bottom_right_below_the_input_opposite_the_cwd(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg = {**CFG, "workspace_root": d}
+            app = ChaosApp(cfg, "p/m")
+            async with app.run_test(size=(100, 30)) as pilot:
+                with patch(
+                    "chaos.agent.chat_stream",
+                    return_value=Reply(
+                        text="hi",
+                        usage={"prompt_tokens": 1200, "completion_tokens": 2200, "total_tokens": 3400},
+                    ),
+                ):
+                    await type_and_submit(app, pilot, "hi")
+                await pilot.pause()
+                cwd = app.query_one("#cwd", Static)
+                usage = app.query_one("#usage", Static)
+                input_widget = app.query_one("#input", Input)
+                self.assertGreater(usage.region.y, input_widget.region.y)
+                self.assertEqual(usage.region.y, cwd.region.y)
+                self.assertGreater(usage.region.x, cwd.region.x)
+                self.assertGreater(usage.region.right, cwd.region.right)
+                self.assertIn("1.2k/3.4k tok this turn · 3.4k session", str(usage.render()))
 
     async def test_deadline_invalid_input_keeps_existing_deadline(self):
         from datetime import datetime, timedelta

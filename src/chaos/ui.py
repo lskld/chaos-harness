@@ -39,7 +39,7 @@ def mascot_text(face=MASCOT_IDLE_FACE, up=False, theme=None):
 
 
 def format_tokens(count):
-    """Compact token count for the top bar: 890 -> '890', 1200 -> '1.2k', 2500000 -> '2.5M'."""
+    """Compact token count for the status line: 890 -> '890', 1200 -> '1.2k', 2500000 -> '2.5M'."""
     count = int(count)
     if count >= 1_000_000:
         value, suffix = count / 1_000_000, "M"
@@ -54,7 +54,7 @@ def format_tokens(count):
 
 
 def usage_text(turn_usage, session_total):
-    """The top-bar usage line '1.2k/3.4k tok this turn · 8.9k session'; '' when nothing was used yet."""
+    """The bottom-right status line '1.2k/3.4k tok this turn · 8.9k session'; '' when nothing was used yet."""
     turn_usage = turn_usage or {}
     prompt = turn_usage.get("prompt_tokens") or 0
     total = turn_usage.get("total_tokens") or 0

@@ -214,7 +214,9 @@ class ChaosApp(App):
     #bottom { dock: bottom; height: auto; }
     #suggestions { display: none; height: auto; max-height: 8; padding: 0 2; margin: 0 2; }
     #input { margin: 0 2; }
-    #cwd { height: 1; padding: 0 2; }
+    #statusline { height: 1; }
+    #cwd { height: 1; width: 1fr; padding: 0 2; }
+    #usage { height: 1; width: auto; text-align: right; padding: 0 2; }
     """
 
     BINDINGS = [("ctrl+q", "exit_app", "Quit")]
@@ -257,7 +259,6 @@ class ChaosApp(App):
             with Vertical(id="titles"):
                 yield Static(Text(ui.NAME, style=self.ui_theme["banner"]), id="name")
                 yield Static(f"model: {self.ref}", id="model")
-                yield Static("", id="usage")
                 yield Static(ui.TAGLINE, id="tagline")
                 yield Static(ui.HELP_HINT, id="helpline")
             with Vertical(id="right"):
@@ -268,7 +269,9 @@ class ChaosApp(App):
         with Vertical(id="bottom"):
             yield Static("", id="suggestions")
             yield CommandInput(placeholder="ask chaos…", id="input")
-            yield Static(Text(self._cwd_text()), id="cwd")
+            with Horizontal(id="statusline"):
+                yield Static(Text(self._cwd_text()), id="cwd")
+                yield Static("", id="usage")
 
     def on_mount(self):
         self._apply_theme()
