@@ -15,6 +15,19 @@ class Reply(NamedTuple):
     reasoning: str = ""
     tool_calls: tuple = ()
     events: tuple = ()
+    usage: dict = {}
+
+
+def add_usage(total, usage):
+    """Merge one response's usage dict into an accumulated total; numeric fields only."""
+    merged = dict(total or {})
+    if not isinstance(usage, dict):
+        return merged
+    for key, value in usage.items():
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        merged[key] = merged.get(key, 0) + value
+    return merged
 
 
 def chat(*, base_url, api_key, model, messages, tools=None, timeout=120):
@@ -38,7 +51,8 @@ def chat(*, base_url, api_key, model, messages, tools=None, timeout=120):
             config_mod.redact(f"API error {response.status_code} from {url}: {response.text[:300]}", (api_key,))
         )
     try:
-        message = response.json()["choices"][0]["message"]
+        data = response.json()
+        message = data["choices"][0]["message"]
     except (KeyError, IndexError, TypeError, ValueError) as exc:
         raise LLMError(
             config_mod.redact(f"unexpected response from {url}: {exc}", (api_key,))
@@ -47,6 +61,7 @@ def chat(*, base_url, api_key, model, messages, tools=None, timeout=120):
         text=_content_text(message.get("content")),
         reasoning=_reasoning_text(message),
         tool_calls=_tool_calls(message),
+        usage=_usage(data),
     )
 
 
@@ -61,7 +76,12 @@ def chat_stream(*, base_url, api_key, model, messages, tools=None, timeout=120, 
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
-    payload = {"model": model, "messages": messages, "stream": True}
+    payload = {
+        "model": model,
+        "messages": messages,
+        "stream": True,
+        "stream_options": {"include_usage": True},
+    }
     if tools:
         payload["tools"] = tools
     if max_tokens is not None:
@@ -78,7 +98,8 @@ def chat_stream(*, base_url, api_key, model, messages, tools=None, timeout=120, 
         )
     if "text/event-stream" not in response.headers.get("Content-Type", ""):
         try:
-            message = response.json()["choices"][0]["message"]
+            data = response.json()
+            message = data["choices"][0]["message"]
         except (KeyError, IndexError, TypeError, ValueError) as exc:
             raise LLMError(
             config_mod.redact(f"unexpected response from {url}: {exc}", (api_key,))
@@ -87,12 +108,14 @@ def chat_stream(*, base_url, api_key, model, messages, tools=None, timeout=120, 
             text=_content_text(message.get("content")),
             reasoning=_reasoning_text(message),
             tool_calls=_tool_calls(message),
+            usage=_usage(data),
         )
     content_parts = []
     reasoning_parts = []
     calls = {}
     id_aliases = {}
     fresh_key = -1
+    usage = {}
     for line in response.iter_lines(decode_unicode=True):
         if not line or not line.startswith("data:"):
             continue
@@ -100,8 +123,14 @@ def chat_stream(*, base_url, api_key, model, messages, tools=None, timeout=120, 
         if data == "[DONE]":
             break
         try:
-            delta = json.loads(data)["choices"][0]["delta"]
-        except (json.JSONDecodeError, KeyError, IndexError, TypeError):
+            chunk = json.loads(data)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(chunk, dict):
+            usage = add_usage(usage, chunk.get("usage"))
+        try:
+            delta = chunk["choices"][0]["delta"]
+        except (KeyError, IndexError, TypeError):
             continue
         content = delta.get("content")
         if isinstance(content, str) and content:
@@ -150,7 +179,14 @@ def chat_stream(*, base_url, api_key, model, messages, tools=None, timeout=120, 
         text="".join(content_parts),
         reasoning="".join(reasoning_parts),
         tool_calls=tuple(calls.values()),
+        usage=usage,
     )
+
+
+def _usage(payload):
+    """The response's top-level usage block ({prompt_tokens, completion_tokens, total_tokens, ...})."""
+    usage = payload.get("usage") if isinstance(payload, dict) else None
+    return dict(usage) if isinstance(usage, dict) else {}
 
 
 def _tool_calls(message):

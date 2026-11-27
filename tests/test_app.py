@@ -765,6 +765,42 @@ class AppTest(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(widget.display)
             self.assertIn("/deadline", _renderable_text(widget.content))
 
+    async def test_top_bar_shows_turn_and_session_token_usage(self):
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            with patch(
+                "chaos.agent.chat_stream",
+                side_effect=[
+                    Reply(
+                        text="one",
+                        usage={"prompt_tokens": 1200, "completion_tokens": 2200, "total_tokens": 3400},
+                    ),
+                    Reply(
+                        text="two",
+                        usage={"prompt_tokens": 2000, "completion_tokens": 3500, "total_tokens": 5500},
+                    ),
+                ],
+            ):
+                await type_and_submit(app, pilot, "first")
+                self.assertEqual(
+                    str(app.query_one("#usage", Static).render()),
+                    "1.2k/3.4k tok this turn · 3.4k session",
+                )
+                await type_and_submit(app, pilot, "second")
+                self.assertEqual(
+                    str(app.query_one("#usage", Static).render()),
+                    "2k/5.5k tok this turn · 8.9k session",
+                )
+
+    async def test_top_bar_usage_stays_empty_when_no_usage_is_reported(self):
+        app = ChaosApp(CFG, "p/m")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            self.assertEqual(str(app.query_one("#usage", Static).render()), "")
+            with patch("chaos.agent.chat_stream", return_value=Reply(text="hi")):
+                await type_and_submit(app, pilot, "hi")
+            self.assertEqual(str(app.query_one("#usage", Static).render()), "")
+
     async def test_deadline_invalid_input_keeps_existing_deadline(self):
         from datetime import datetime, timedelta
 

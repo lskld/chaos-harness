@@ -38,6 +38,34 @@ def mascot_text(face=MASCOT_IDLE_FACE, up=False, theme=None):
     return text
 
 
+def format_tokens(count):
+    """Compact token count for the top bar: 890 -> '890', 1200 -> '1.2k', 2500000 -> '2.5M'."""
+    count = int(count)
+    if count >= 1_000_000:
+        value, suffix = count / 1_000_000, "M"
+    elif count >= 1_000:
+        value, suffix = count / 1_000, "k"
+    else:
+        return str(count)
+    text = f"{value:.1f}"
+    if text.endswith(".0"):
+        text = text[:-2]
+    return text + suffix
+
+
+def usage_text(turn_usage, session_total):
+    """The top-bar usage line '1.2k/3.4k tok this turn · 8.9k session'; '' when nothing was used yet."""
+    turn_usage = turn_usage or {}
+    prompt = turn_usage.get("prompt_tokens") or 0
+    total = turn_usage.get("total_tokens") or 0
+    if not prompt and not total:
+        return ""
+    return (
+        f"{format_tokens(prompt)}/{format_tokens(total)} tok this turn"
+        f" · {format_tokens(session_total)} session"
+    )
+
+
 def render_banner(theme, ref):
     name = Text(NAME, style=theme["banner"])
     tagline = Text(TAGLINE, style=theme["info"])

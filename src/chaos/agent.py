@@ -2,7 +2,7 @@ import json
 
 from . import config as config_mod
 from . import tools as tools_mod
-from .llm import Reply, chat, chat_stream
+from .llm import Reply, add_usage, chat, chat_stream
 
 SYSTEM_PROMPT = (
     "You are CHAOS, a hackathon agent. The user's project is the workspace rooted at {root}. "
@@ -52,7 +52,8 @@ def respond(cfg, ref, messages, on_event=None, stream=False):
     If on_event is given, it is called with a typed event as each step happens:
     {"type": "round", "reasoning"?, "content"?}, {"type": "tool_call", ...},
     {"type": "tool_result", ...}, {"type": "ask_user", "question", "choices", "future"}
-    and {"type": "reply", "text": ...}; with stream=True
+    and {"type": "reply", "text": ..., "usage": ...} — the reply event's usage is the
+    turn's accumulated token usage across all rounds; with stream=True
     it also gets {"type": "delta", "field": "content"|"reasoning", "text": ...} per chunk.
     A round's "content" carries any text the model produced before calling tools.
     The ask_user tool pauses the loop: its handler emits the ask_user event (carrying a
@@ -69,6 +70,7 @@ def respond(cfg, ref, messages, on_event=None, stream=False):
             prompt = f"{prompt} {deadline_line}"
         messages.insert(0, {"role": "system", "content": prompt})
     events = []
+    turn_usage = {}
 
     def emit(event):
         if on_event is not None:
@@ -101,6 +103,7 @@ def respond(cfg, ref, messages, on_event=None, stream=False):
             text=config_mod.redact(reply.text, ctx.secrets),
             reasoning=config_mod.redact(reply.reasoning, ctx.secrets),
         )
+        turn_usage = add_usage(turn_usage, reply.usage)
         round_event = {"type": "round"}
         if reply.reasoning and "reasoning" not in streamed_fields:
             round_event["reasoning"] = reply.reasoning
@@ -110,8 +113,8 @@ def respond(cfg, ref, messages, on_event=None, stream=False):
             emit(round_event)
         if not reply.tool_calls:
             messages.append({"role": "assistant", "content": reply.text})
-            emit({"type": "reply", "text": reply.text})
-            return reply._replace(events=tuple(events))
+            emit({"type": "reply", "text": reply.text, "usage": dict(turn_usage)})
+            return reply._replace(usage=dict(turn_usage), events=tuple(events))
         messages.append(
             {
                 "role": "assistant",
@@ -147,5 +150,5 @@ def respond(cfg, ref, messages, on_event=None, stream=False):
             )
     limit_text = f"stopped after {max_rounds} tool rounds — ask me to continue"
     messages.append({"role": "assistant", "content": limit_text})
-    emit({"type": "reply", "text": limit_text})
-    return Reply(text=limit_text, events=tuple(events))
+    emit({"type": "reply", "text": limit_text, "usage": dict(turn_usage)})
+    return Reply(text=limit_text, usage=dict(turn_usage), events=tuple(events))
